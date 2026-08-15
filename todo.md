@@ -47,3 +47,7 @@
 - [ ] Open and visually verify the Android bundle in Expo Go or an Android emulator with configured app environment values.
 - [ ] Run post-deployment acceptance tests for a real Paystack transaction, webhook delivery, and the Android app on a physical device or emulator.
 - [x] Update the private GitHub repository with the Supabase, Paystack, daily-learning, admin, and Android implementation.
+- [x] Configure the Android release build profile and create a signed downloadable APK through Expo.
+- [x] Deliver the APK installation link and concise device setup instructions.
+- [x] Create a distinctive SpellCode by Aceify app icon and apply it to Android launcher and splash assets.
+- [x] Build and deliver an updated signed Android APK containing the branded logo.
