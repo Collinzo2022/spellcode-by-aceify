@@ -20,4 +20,7 @@ async function callSupabase(config: SupabasePublicConfig, path: string, payload:
 }
 
 export function signInWithPassword(config: SupabasePublicConfig, email: string, password: string) { return callSupabase(config, "/auth/v1/token?grant_type=password", { email, password }); }
-export function signUpWithPassword(config: SupabasePublicConfig, email: string, password: string, displayName: string) { return callSupabase(config, "/auth/v1/signup", { email, password, data: { display_name: displayName } }); }
+export function signUpWithPassword(config: SupabasePublicConfig, email: string, password: string, displayName: string) {
+  const emailRedirectTo = typeof window === "undefined" ? undefined : `${window.location.origin}/auth/confirmed`;
+  return callSupabase(config, "/auth/v1/signup", { email, password, data: { display_name: displayName }, options: { emailRedirectTo } });
+}

@@ -71,5 +71,7 @@ export async function supabaseAdminRequest<T>(path: string, init: RequestInit = 
     const body = await response.text();
     throw new Error(`Supabase request failed (${response.status}): ${body.slice(0, 280)}`);
   }
-  return response.json() as Promise<T>;
+  if (response.status === 204) return undefined as T;
+  const body = await response.text();
+  return body ? JSON.parse(body) as T : undefined as T;
 }

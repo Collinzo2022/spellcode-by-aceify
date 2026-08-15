@@ -51,3 +51,6 @@
 - [x] Deliver the APK installation link and concise device setup instructions.
 - [x] Create a distinctive SpellCode by Aceify app icon and apply it to Android launcher and splash assets.
 - [x] Build and deliver an updated signed Android APK containing the branded logo.
+- [ ] Fix Supabase email confirmation so Android users are not redirected to localhost.
+- [ ] Fix Android handling of the published mobile API response and verify authenticated learning data loads.
+- [ ] Rebuild and deliver a corrected signed Android APK after production integration validation.
