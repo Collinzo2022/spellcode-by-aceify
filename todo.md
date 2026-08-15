@@ -22,7 +22,7 @@
 - [x] Implement Paystack checkout, server-side verification, webhook processing, and subscription entitlement updates.
 - [x] Create a dedicated SpellCode by Aceify Android companion app with authentication, curriculum, lesson, dashboard, and profile flows.
 - [x] Export the verified codebase to a new private GitHub repository.
-- [ ] Test the payment and mobile integration paths, then save a delivery checkpoint.
+- [x] Test the locally verifiable payment and mobile integration paths, then save a delivery checkpoint.
 - [x] Resolve the web application’s Supabase identity bridge so Supabase UUID-backed queries never use legacy Manus OAuth identifiers.
 - [x] Add Supabase migrations for daily tasks, daily completions, installment tracking, configurable plans, and administrator reporting views.
 - [x] Seed the NGN Full Access one-time, three-month, and six-month plans as inactive until their Paystack plan codes are supplied.
@@ -45,4 +45,5 @@
 - [x] Add a dedicated Android lesson-detail screen reachable from the curriculum list, with theory, progression, and paid lesson gating.
 - [x] Add a true Android learner dashboard with daily-practice summary, XP, streak, access status, and routes into the core learning flows.
 - [ ] Open and visually verify the Android bundle in Expo Go or an Android emulator with configured app environment values.
+- [ ] Run post-deployment acceptance tests for a real Paystack transaction, webhook delivery, and the Android app on a physical device or emulator.
 - [x] Update the private GitHub repository with the Supabase, Paystack, daily-learning, admin, and Android implementation.
