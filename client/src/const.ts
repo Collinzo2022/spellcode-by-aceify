@@ -29,3 +29,6 @@ export const startLogin = () => {
 
   window.location.href = url.toString();
 };
+
+// New learners use the same secure account-entry portal; it creates an account when one does not exist.
+export const startAccountCreation = () => startLogin();

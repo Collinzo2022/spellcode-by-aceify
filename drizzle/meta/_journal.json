@@ -1,5 +1,27 @@
 {
   "version": "7",
   "dialect": "mysql",
-  "entries": []
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1786778986007,
+      "tag": "0000_outgoing_unus",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1786779185058,
+      "tag": "0001_natural_shen",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1786779754808,
+      "tag": "0002_brown_tomas",
+      "breakpoints": true
+    }
+  ]
 }
