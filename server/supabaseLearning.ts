@@ -35,7 +35,7 @@ export async function getVerifiedEntitlements(userId: string) {
   const now = Date.now();
   const activePlans = subscriptions.filter(subscription => !subscription.current_period_end || new Date(subscription.current_period_end).getTime() >= now).map(subscription => subscription.plan_id);
   if (activePlans.length === 0) return { hasFullAccess: false, features: [] as string[] };
-  const plans = await supabaseAdminRequest<Array<{ id: string; paid_features: string[] }>>(`/rest/v1/plans?id=in.(${activePlans.map(id => `"${id}"`).join(",")})&select=id,paid_features`);
+  const plans = await supabaseAdminRequest<Array<{ id: string; paid_features: string[] }>>(`/rest/v1/plans?id=in.(${activePlans.join(",")})&select=id,paid_features`);
   return { hasFullAccess: plans.length > 0, features: Array.from(new Set(plans.flatMap(plan => plan.paid_features ?? []))) };
 }
 

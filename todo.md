@@ -26,12 +26,13 @@
 - [x] Add Supabase migrations for daily tasks, daily completions, installment tracking, configurable plans, and administrator reporting views.
 - [x] Seed the NGN Full Access one-time, three-month, and six-month plans as inactive until their Paystack plan codes are supplied.
 - [x] Add and verify Supabase administrator reporting views for learner subscription/payment status and plan performance.
-- [ ] Implement a daily coding task loop with today’s task, streak protection, XP, progress review, and learner-friendly recovery states.
+- [x] Implement a daily coding task loop with today’s task, streak protection, XP, progress review, and learner-friendly recovery states.
 - [ ] Implement Paystack checkout and server-side entitlement rules for the ₦120,000 one-time plan and monthly installment plans capped at three and six charges.
-- [ ] Build an admin-only dashboard for plan management and learner subscription/payment status, honoring the Supabase `admin` role.
-- [ ] Add explicit daily-task error and retry states so failed task requests do not appear to load indefinitely.
+- [x] Build an admin-only dashboard for plan management and learner subscription/payment status, honoring the Supabase `admin` role.
+- [x] Add explicit daily-task error and retry states so failed task requests do not appear to load indefinitely.
 - [ ] Increment recurring installment counts idempotently, prevent duplicate pending subscriptions, and process recurring Paystack webhook status transitions.
+- [ ] Create payment records for recurring Paystack charge-success references and add idempotent webhook transition tests.
 - [ ] Enforce verified paid entitlements across locked lessons, guided projects, AI tutor access, and certificates.
-- [ ] Add loading, empty, and error states to the administrator plan and learner-billing views.
+- [x] Add loading, empty, and error states to the administrator plan and learner-billing views.
 - [ ] Create the Android companion app with package name `com.bayospel.spelcode` and daily tasks, curriculum, dashboard, and profile experiences.
-- [ ] Update the private GitHub repository with the Supabase, Paystack, daily-learning, admin, and Android implementation.
+- [x] Update the private GitHub repository with the Supabase, Paystack, daily-learning, admin, and Android implementation.

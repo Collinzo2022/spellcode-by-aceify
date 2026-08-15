@@ -69,6 +69,31 @@ async function recordVerifiedPayment(payment: PaymentRecord, transaction: { id: 
   }
 }
 
+async function findOrCreateRecurringPayment(data: Record<string, unknown>) {
+  const reference = String(data.reference ?? "");
+  if (!reference) return null;
+  const existing = await supabaseAdminRequest<PaymentRecord[]>(`/rest/v1/payment_transactions?paystack_reference=eq.${encodeURIComponent(reference)}&select=id,user_id,plan_id,paystack_reference,amount_minor,currency,status`);
+  if (existing[0]) return existing[0];
+  const metadata = parseMetadata(data.metadata);
+  const customer = data.customer as Record<string, unknown> | undefined;
+  const planData = data.plan as Record<string, unknown> | undefined;
+  const planCode = String(planData?.plan_code ?? metadata.plan_code ?? "");
+  const customerCode = String(customer?.customer_code ?? "");
+  const userId = typeof metadata.user_id === "string" ? metadata.user_id : "";
+  if (!planCode || (!customerCode && !userId)) return null;
+  const plans = await supabaseAdminRequest<Plan[]>(`/rest/v1/plans?paystack_plan_code=eq.${encodeURIComponent(planCode)}&select=id,code,name,currency,amount_minor,interval,max_installments,paystack_plan_code,is_active`);
+  const plan = plans[0];
+  if (!plan) return null;
+  const subscriptionQuery = userId
+    ? `/rest/v1/subscriptions?user_id=eq.${encodeURIComponent(userId)}&plan_id=eq.${plan.id}&status=in.(active,past_due)&select=id,user_id,plan_id&order=updated_at.desc&limit=1`
+    : `/rest/v1/subscriptions?paystack_customer_code=eq.${encodeURIComponent(customerCode)}&plan_id=eq.${plan.id}&status=in.(active,past_due)&select=id,user_id,plan_id&order=updated_at.desc&limit=1`;
+  const subscriptions = await supabaseAdminRequest<Array<{ id: string; user_id: string; plan_id: string }>>(subscriptionQuery);
+  const subscription = subscriptions[0];
+  if (!subscription) return null;
+  const created = await supabaseAdminRequest<PaymentRecord[]>("/rest/v1/payment_transactions?on_conflict=paystack_reference", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" }, body: JSON.stringify({ user_id: subscription.user_id, plan_id: subscription.plan_id, subscription_id: subscription.id, paystack_reference: reference, amount_minor: Number(data.amount ?? plan.amount_minor), currency: String(data.currency ?? plan.currency), status: "initialized", provider_payload: data }) });
+  return created[0] ?? (await supabaseAdminRequest<PaymentRecord[]>(`/rest/v1/payment_transactions?paystack_reference=eq.${encodeURIComponent(reference)}&select=id,user_id,plan_id,paystack_reference,amount_minor,currency,status`))[0] ?? null;
+}
+
 async function updateSubscriptionLifecycle(input: { event: string; data: Record<string, unknown> }) {
   const subscriptionData = (input.data.subscription ?? input.data) as Record<string, unknown>;
   const customer = input.data.customer as Record<string, unknown> | undefined;
@@ -102,7 +127,7 @@ export function registerPaystackWebhook(app: Express) {
       if (event.event === "charge.success") {
         const reference = String(event.data?.reference ?? "");
         const payments = await supabaseAdminRequest<PaymentRecord[]>(`/rest/v1/payment_transactions?paystack_reference=eq.${encodeURIComponent(reference)}&select=id,user_id,plan_id,paystack_reference,amount_minor,currency,status`);
-        const payment = payments[0];
+        const payment = payments[0] ?? await findOrCreateRecurringPayment(event.data ?? {});
         if (payment) await recordVerifiedPayment(payment, { id: Number(event.data?.id ?? 0), status: "success", amount: Number(event.data?.amount ?? 0), currency: String(event.data?.currency ?? "NGN"), paid_at: String(event.data?.paid_at ?? new Date().toISOString()), authorization: event.data?.authorization as { authorization_code?: string }, customer: event.data?.customer as { customer_code?: string }, plan: event.data?.plan as { plan_code?: string } });
       }
       if (["subscription.create", "subscription.disable", "subscription.not_renew", "invoice.payment_failed", "invoice.update"].includes(event.event ?? "")) await updateSubscriptionLifecycle({ event: event.event ?? "", data: event.data ?? {} });
