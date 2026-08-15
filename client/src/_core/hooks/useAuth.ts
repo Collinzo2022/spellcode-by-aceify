@@ -1,7 +1,7 @@
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { TRPCClientError } from "@trpc/client";
-import { clearSupabaseSession } from "@/lib/supabaseAuth";
+import { clearSupabaseSession, getSupabaseAccessToken } from "@/lib/supabaseAuth";
 import { useCallback, useEffect, useMemo } from "react";
 
 type UseAuthOptions = {
@@ -53,15 +53,17 @@ export function useAuth(options?: UseAuthOptions) {
   }, [logoutMutation, utils]);
 
   const state = useMemo(() => {
+    const hasSupabaseSession = Boolean(getSupabaseAccessToken());
+    const user = hasSupabaseSession ? meQuery.data ?? null : null;
     localStorage.setItem(
       "manus-runtime-user-info",
-      JSON.stringify(meQuery.data)
+      JSON.stringify(user)
     );
     return {
-      user: meQuery.data ?? null,
+      user,
       loading: meQuery.isLoading || logoutMutation.isPending,
       error: meQuery.error ?? logoutMutation.error ?? null,
-      isAuthenticated: Boolean(meQuery.data),
+      isAuthenticated: Boolean(user),
     };
   }, [
     meQuery.data,

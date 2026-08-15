@@ -11,6 +11,19 @@ function paystackHeaders() {
   return { Authorization: `Bearer ${ENV.paystackSecretKey}`, "Content-Type": "application/json" };
 }
 
+export function isValidPaystackSignature(raw: Buffer, received: string, secret: string) {
+  const expected = crypto.createHmac("sha512", secret).update(raw).digest("hex");
+  const receivedBuffer = Buffer.from(received);
+  const expectedBuffer = Buffer.from(expected);
+  return Boolean(received) && receivedBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(receivedBuffer, expectedBuffer);
+}
+
+export function paystackLifecycleStatus(event: string, upstreamStatus: string) {
+  if (event === "invoice.payment_failed" || upstreamStatus === "attention") return "past_due";
+  if (event === "subscription.disable" || upstreamStatus === "complete" || upstreamStatus === "cancelled") return "expired";
+  return "active";
+}
+
 async function paystackRequest<T>(path: string, init: RequestInit) {
   const response = await fetch(`https://api.paystack.co${path}`, { ...init, headers: { ...paystackHeaders(), ...(init.headers ?? {}) } });
   const payload = await response.json().catch(() => null) as { status?: boolean; message?: string; data?: T } | null;
@@ -69,7 +82,7 @@ async function recordVerifiedPayment(payment: PaymentRecord, transaction: { id: 
   }
 }
 
-async function findOrCreateRecurringPayment(data: Record<string, unknown>) {
+export async function findOrCreateRecurringPayment(data: Record<string, unknown>) {
   const reference = String(data.reference ?? "");
   if (!reference) return null;
   const existing = await supabaseAdminRequest<PaymentRecord[]>(`/rest/v1/payment_transactions?paystack_reference=eq.${encodeURIComponent(reference)}&select=id,user_id,plan_id,paystack_reference,amount_minor,currency,status`);
@@ -108,7 +121,7 @@ async function updateSubscriptionLifecycle(input: { event: string; data: Record<
   const subscription = subscriptions[0];
   if (!subscription) return;
   const upstreamStatus = String(subscriptionData.status ?? "");
-  const status = input.event === "invoice.payment_failed" || upstreamStatus === "attention" ? "past_due" : input.event === "subscription.disable" || upstreamStatus === "complete" || upstreamStatus === "cancelled" ? "expired" : "active";
+  const status = paystackLifecycleStatus(input.event, upstreamStatus);
   await supabaseAdminRequest(`/rest/v1/subscriptions?id=eq.${subscription.id}`, { method: "PATCH", body: JSON.stringify({ status, paystack_subscription_code: String(subscriptionData.subscription_code ?? "") || null, paystack_email_token: String(subscriptionData.email_token ?? "") || null, cancel_at_period_end: input.event === "subscription.not_renew" || upstreamStatus === "non-renewing", current_period_end: subscriptionData.next_payment_date ?? null, updated_at: new Date().toISOString() }) });
 }
 
@@ -116,10 +129,7 @@ export function registerPaystackWebhook(app: Express) {
   app.post("/api/paystack/webhook", async (req: Request & { rawBody?: Buffer }, res: Response) => {
     const raw = req.rawBody ?? Buffer.from(JSON.stringify(req.body));
     const received = req.header("x-paystack-signature") ?? "";
-    const expected = crypto.createHmac("sha512", ENV.paystackSecretKey).update(raw).digest("hex");
-    const receivedBuffer = Buffer.from(received);
-    const expectedBuffer = Buffer.from(expected);
-    if (!received || receivedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)) return res.status(401).json({ error: "Invalid Paystack signature" });
+    if (!isValidPaystackSignature(raw, received, ENV.paystackSecretKey)) return res.status(401).json({ error: "Invalid Paystack signature" });
     const event = req.body as { event?: string; data?: Record<string, unknown> };
     const eventId = crypto.createHash("sha256").update(raw).digest("hex");
     try {

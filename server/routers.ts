@@ -5,6 +5,9 @@ import { publicProcedure, router } from "./_core/trpc";
 import { learningRouter } from "./routers/learning";
 import { getSupabasePublicConfig } from "./supabase";
 import { billingRouter } from "./routers/billing";
+import { tutorRouter } from "./routers/tutor";
+import { certificatesRouter } from "./routers/certificates";
+import { projectsRouter } from "./routers/projects";
 
 export const appRouter = router({
   system: systemRouter,
@@ -19,6 +22,9 @@ export const appRouter = router({
   }),
   learning: learningRouter,
   billing: billingRouter,
+  tutor: tutorRouter,
+  certificates: certificatesRouter,
+  projects: projectsRouter,
 });
 
 export type AppRouter = typeof appRouter;

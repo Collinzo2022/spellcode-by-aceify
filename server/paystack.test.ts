@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildPaystackInitializePayload } from "./paystack";
+import crypto from "node:crypto";
+import { buildPaystackInitializePayload, isValidPaystackSignature, paystackLifecycleStatus } from "./paystack";
 
 describe("Paystack checkout payload", () => {
   const base = { email: "learner@example.com", reference: "spellcode-reference", callbackUrl: "https://spellcode.example/payment/complete", userId: "user-1" };
@@ -12,5 +13,21 @@ describe("Paystack checkout payload", () => {
     const payload = buildPaystackInitializePayload({ ...base, plan: { id: "2", code: "full-access-3-month", name: "Installment", currency: "NGN", amount_minor: 4000000, interval: "monthly", max_installments: 3, paystack_plan_code: "PLN_123", is_active: true } });
     expect(payload.plan).toBe("PLN_123");
     expect(payload.invoice_limit).toBe(3);
+  });
+});
+
+describe("Paystack webhook safety", () => {
+  it("accepts only the matching SHA512 webhook signature", () => {
+    const body = Buffer.from('{"event":"charge.success"}');
+    const signature = crypto.createHmac("sha512", "test-secret").update(body).digest("hex");
+    expect(isValidPaystackSignature(body, signature, "test-secret")).toBe(true);
+    expect(isValidPaystackSignature(body, `${signature}0`, "test-secret")).toBe(false);
+    expect(isValidPaystackSignature(body, signature, "other-secret")).toBe(false);
+  });
+
+  it("maps failed and completed recurring events to safe local subscription states", () => {
+    expect(paystackLifecycleStatus("invoice.payment_failed", "")).toBe("past_due");
+    expect(paystackLifecycleStatus("subscription.disable", "active")).toBe("expired");
+    expect(paystackLifecycleStatus("invoice.update", "active")).toBe("active");
   });
 });

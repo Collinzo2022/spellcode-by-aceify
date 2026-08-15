@@ -82,7 +82,7 @@ const createOAuthHttpClient = (): AxiosInstance =>
     timeout: AXIOS_TIMEOUT_MS,
   });
 
-class SDKServer {
+export class SDKServer {
   private readonly client: AxiosInstance;
   private readonly oauthService: OAuthService;
 
@@ -257,18 +257,25 @@ class SDKServer {
   }
 
   async authenticateRequest(req: Request): Promise<AuthenticatedUser> {
-    // 1. Prefer the session cookie (regular OAuth login).
+    // 1. Prefer a valid Supabase bearer session. The web and Android learning
+    // clients attach this token so Supabase UUID identities must take precedence
+    // over any legacy Manus OAuth cookie that may still be present in the browser.
+    const authHeader = req.headers.authorization;
+    const bearerToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+    if (bearerToken) {
+      const supabaseUser = await getSupabaseSessionUser(bearerToken);
+      if (supabaseUser) return supabaseUser;
+    }
+
+    // 2. Use the regular OAuth cookie where no valid Supabase bearer session exists.
     const cookies = this.parseCookies(req.headers.cookie);
     let sessionToken = cookies.get(COOKIE_NAME);
 
-    // 2. Fallback to the Authorization header (Preview auto-login via
+    // 3. Fallback to the Authorization header (Preview auto-login via
     //    sessionStorage), used when the browser blocks iframe cookies such as
     //    Safari ITP, private browsing, or iOS/Android WebView.
     if (!sessionToken) {
-      const authHeader = req.headers.authorization;
-      if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
-        sessionToken = authHeader.slice(7);
-      }
+      sessionToken = bearerToken;
     }
 
     if (sessionToken) {

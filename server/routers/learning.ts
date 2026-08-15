@@ -3,6 +3,7 @@ import { z } from "zod";
 import * as db from "../db";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { completeDailyLearningTask, getDailyLearningOverview, getVerifiedEntitlements } from "../supabaseLearning";
+import { lessonRequiresFullAccess } from "../../shared/entitlements";
 
 const lessonInput = z.object({
   lessonId: z.string().min(1).max(80),
@@ -13,7 +14,7 @@ const lessonInput = z.object({
 
 async function requireLessonAccess(userId: string, lessonId: string) {
   const lesson = CURRICULUM.flatMap(track => track.lessons).find(item => item.id === lessonId);
-  if (!lesson || lesson.order <= 1) return;
+  if (!lesson || !lessonRequiresFullAccess(lesson.order)) return;
   const entitlement = await getVerifiedEntitlements(userId);
   if (!entitlement.hasFullAccess) throw new Error("This lesson is part of Full Access. Choose a plan to continue.");
 }

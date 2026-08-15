@@ -17,22 +17,32 @@
 - [x] Upgrade challenge support to progressive hints, a solution reveal, and visible successful challenge XP feedback.
 - [x] Add unit coverage for reusable lesson and challenge progress rules, then re-run the full validation suite.
 - [x] Save a final delivery checkpoint containing the verified SpellCode by Aceify prototype.
-- [ ] Finalize the Supabase schema for identity, curriculum, learning progress, projects, subscriptions, payments, and Paystack webhook events.
-- [ ] Configure secure Supabase and Paystack environment variables without exposing secret keys in the browser or repository.
-- [ ] Implement Paystack checkout, server-side verification, webhook processing, and subscription entitlement updates.
-- [ ] Create a dedicated SpellCode by Aceify Android companion app with authentication, curriculum, lesson, dashboard, and profile flows.
+- [x] Finalize the Supabase schema for identity, curriculum, learning progress, projects, subscriptions, payments, and Paystack webhook events.
+- [x] Configure secure Supabase and Paystack environment variables without exposing secret keys in the browser or repository.
+- [x] Implement Paystack checkout, server-side verification, webhook processing, and subscription entitlement updates.
+- [x] Create a dedicated SpellCode by Aceify Android companion app with authentication, curriculum, lesson, dashboard, and profile flows.
 - [x] Export the verified codebase to a new private GitHub repository.
 - [ ] Test the payment and mobile integration paths, then save a delivery checkpoint.
+- [x] Resolve the web application’s Supabase identity bridge so Supabase UUID-backed queries never use legacy Manus OAuth identifiers.
 - [x] Add Supabase migrations for daily tasks, daily completions, installment tracking, configurable plans, and administrator reporting views.
 - [x] Seed the NGN Full Access one-time, three-month, and six-month plans as inactive until their Paystack plan codes are supplied.
 - [x] Add and verify Supabase administrator reporting views for learner subscription/payment status and plan performance.
 - [x] Implement a daily coding task loop with today’s task, streak protection, XP, progress review, and learner-friendly recovery states.
-- [ ] Implement Paystack checkout and server-side entitlement rules for the ₦120,000 one-time plan and monthly installment plans capped at three and six charges.
+- [x] Implement Paystack checkout and server-side entitlement rules for the ₦120,000 one-time plan and monthly installment plans capped at three and six charges.
 - [x] Build an admin-only dashboard for plan management and learner subscription/payment status, honoring the Supabase `admin` role.
 - [x] Add explicit daily-task error and retry states so failed task requests do not appear to load indefinitely.
-- [ ] Increment recurring installment counts idempotently, prevent duplicate pending subscriptions, and process recurring Paystack webhook status transitions.
-- [ ] Create payment records for recurring Paystack charge-success references and add idempotent webhook transition tests.
-- [ ] Enforce verified paid entitlements across locked lessons, guided projects, AI tutor access, and certificates.
+- [x] Increment recurring installment counts idempotently, prevent duplicate pending subscriptions, and process recurring Paystack webhook status transitions.
+- [x] Create payment records for recurring Paystack charge-success references and add idempotent webhook transition tests.
+- [x] Enforce verified paid entitlements across locked lessons, guided projects, AI tutor access, and certificates.
+- [x] Build the Full Access AI tutor with server-side model calls, entitlement enforcement, and learner-safe coding guidance.
+- [x] Implement a real server-side Full Access project publishing flow rather than a placeholder publishing action.
+- [x] Provide backend-backed certificate issuance or clearly scope the feature to eligibility only.
+- [x] Add focused entitlement tests for advanced lessons, project publishing, AI tutor, and certificate eligibility.
+- [x] Add API-level tests for recurring Paystack charge success, duplicate webhook replay, and Full Access procedure enforcement.
+- [x] Drive the signed Paystack webhook route with recurring charge-success and duplicate replay fixtures, verifying one payment record and one installment increment per unique reference.
 - [x] Add loading, empty, and error states to the administrator plan and learner-billing views.
-- [ ] Create the Android companion app with package name `com.bayospel.spelcode` and daily tasks, curriculum, dashboard, and profile experiences.
+- [x] Create the Android companion app with package name `com.bayospel.spelcode` and daily tasks, curriculum, dashboard, and profile experiences.
+- [x] Add a dedicated Android lesson-detail screen reachable from the curriculum list, with theory, progression, and paid lesson gating.
+- [x] Add a true Android learner dashboard with daily-practice summary, XP, streak, access status, and routes into the core learning flows.
+- [ ] Open and visually verify the Android bundle in Expo Go or an Android emulator with configured app environment values.
 - [x] Update the private GitHub repository with the Supabase, Paystack, daily-learning, admin, and Android implementation.
