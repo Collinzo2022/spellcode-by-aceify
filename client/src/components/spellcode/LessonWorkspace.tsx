@@ -3,7 +3,7 @@ import { startLogin } from "@/const";
 import { validateChallenge } from "@/lib/challenge";
 import { trpc } from "@/lib/trpc";
 import type { LessonDefinition } from "@shared/curriculum";
-import { Check, ChevronLeft, ChevronRight, Code2, Eye, Monitor, RotateCcw, Smartphone, Tablet, Terminal, Trophy } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Code2, Eye, LockKeyhole, Monitor, RotateCcw, Smartphone, Tablet, Terminal, Trophy } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link } from "wouter";
@@ -20,6 +20,7 @@ function starterFor(lesson: LessonDefinition) {
 
 export function LessonWorkspace({ lesson, track }: { lesson: LessonDefinition; track: "HTML" | "CSS" | "JavaScript" }) {
   const { isAuthenticated } = useAuth();
+  const access = trpc.billing.myAccess.useQuery(undefined, { enabled: isAuthenticated });
   const defaults = useMemo(() => starterFor(lesson), [lesson]);
   const [html, setHtml] = useState(defaults.html);
   const [css, setCss] = useState(defaults.css);
@@ -48,6 +49,10 @@ export function LessonWorkspace({ lesson, track }: { lesson: LessonDefinition; t
     completeLesson.mutate({ lessonId: lesson.id, track, difficulty: lesson.difficulty, xp: lesson.xp });
   }
 
+  const requiresFullAccess = lesson.order > 1;
+  const locked = requiresFullAccess && (!isAuthenticated || (!access.isLoading && !access.data?.hasFullAccess));
+  if (locked) return <div className="grid min-h-screen place-items-center bg-[#111116] px-5 text-white"><div className="max-w-lg text-center"><Link href="/curriculum" className="inline-flex items-center gap-2 text-sm text-[#aaa6b1] hover:text-white"><ChevronLeft className="size-4" /> Curriculum</Link><span className="mx-auto mt-10 grid size-12 place-items-center rounded-2xl border border-[#d7b77f]/25 bg-[#d7b77f]/[0.08] text-[#e8cf9e]"><LockKeyhole className="size-5" /></span><p className="mt-6 font-mono text-[10px] uppercase tracking-[0.16em] text-[#c8a46e]">Full Access lesson</p><h1 className="mt-3 font-display text-4xl tracking-[-0.05em]">Continue your path with Full Access.</h1><p className="mt-4 text-[15px] leading-7 text-[#aaa5af]">{lesson.title} is available after Level 1. Full Access also includes project publishing, certificates, and unlimited AI tutor support.</p><Link href="/access" className="mt-7 inline-flex rounded-full bg-[#eee8df] px-5 py-3 text-sm font-semibold text-[#19171b]">View Full Access options</Link></div></div>;
+
   return <div className="min-h-screen bg-[#111116] text-white">
     <div className="border-b border-white/[0.07] bg-[#15151b]"><div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4 px-4 py-3 lg:px-6"><Link href="/curriculum" className="inline-flex items-center gap-2 text-sm text-[#aaa6b1] transition hover:text-white"><ChevronLeft className="size-4" /> Curriculum</Link><div className="hidden items-center gap-2 sm:flex"><span className="rounded-full bg-white/[0.07] px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#d4c4ff]">{track}</span><span className="text-sm text-[#e7e3ec]">{lesson.title}</span></div><button onClick={markComplete} disabled={completeLesson.isPending} className="inline-flex items-center gap-2 rounded-full bg-[#ede8df] px-3.5 py-2 text-xs font-semibold text-[#19171c] transition hover:bg-white disabled:opacity-60"><Trophy className="size-3.5" /> Complete lesson</button></div></div>
     <main className="mx-auto grid max-w-[1500px] lg:grid-cols-[minmax(330px,0.43fr)_minmax(0,0.57fr)]">
@@ -56,4 +61,3 @@ export function LessonWorkspace({ lesson, track }: { lesson: LessonDefinition; t
     </main>
   </div>;
 }
-

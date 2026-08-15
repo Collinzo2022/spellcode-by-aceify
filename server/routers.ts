@@ -3,11 +3,14 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { learningRouter } from "./routers/learning";
+import { getSupabasePublicConfig } from "./supabase";
+import { billingRouter } from "./routers/billing";
 
 export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    supabaseConfig: publicProcedure.query(() => getSupabasePublicConfig()),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -15,7 +18,7 @@ export const appRouter = router({
     }),
   }),
   learning: learningRouter,
+  billing: billingRouter,
 });
 
 export type AppRouter = typeof appRouter;
-

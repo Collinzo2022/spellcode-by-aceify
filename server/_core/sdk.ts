@@ -6,6 +6,7 @@ import type { Request } from "express";
 import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
+import { getSupabaseSessionUser } from "../supabase";
 import { ENV } from "./env";
 import type {
   ExchangeTokenRequest,
@@ -268,6 +269,11 @@ class SDKServer {
       if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
         sessionToken = authHeader.slice(7);
       }
+    }
+
+    if (sessionToken) {
+      const supabaseUser = await getSupabaseSessionUser(sessionToken);
+      if (supabaseUser) return supabaseUser;
     }
 
     const session = await this.verifySession(sessionToken);

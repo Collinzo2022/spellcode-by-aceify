@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { BrandMark } from "./BrandMark";
 
-const navigation = [{ label: "Curriculum", href: "/curriculum" }, { label: "Projects", href: "/projects" }, { label: "Dashboard", href: "/dashboard" }];
+const navigation = [{ label: "Today", href: "/today" }, { label: "Curriculum", href: "/curriculum" }, { label: "Projects", href: "/projects" }, { label: "Dashboard", href: "/dashboard" }];
 
 export function AppHeader() {
   const [location] = useLocation();
