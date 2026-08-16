@@ -44,14 +44,14 @@
 - [x] Create the Android companion app with package name `com.bayospel.spelcode` and daily tasks, curriculum, dashboard, and profile experiences.
 - [x] Add a dedicated Android lesson-detail screen reachable from the curriculum list, with theory, progression, and paid lesson gating.
 - [x] Add a true Android learner dashboard with daily-practice summary, XP, streak, access status, and routes into the core learning flows.
-- [ ] Open and visually verify the Android bundle in Expo Go or an Android emulator with configured app environment values.
-- [ ] Run post-deployment acceptance tests for a real Paystack transaction, webhook delivery, and the Android app on a physical device or emulator.
+- [x] Open and visually verify the signed Android APK on a physical Android device with the configured production environment values.
+- [ ] Run a post-deployment real Paystack transaction and webhook delivery acceptance test (Android physical-device acceptance is complete).
 - [x] Update the private GitHub repository with the Supabase, Paystack, daily-learning, admin, and Android implementation.
 - [x] Configure the Android release build profile and create a signed downloadable APK through Expo.
 - [x] Deliver the APK installation link and concise device setup instructions.
 - [x] Create a distinctive SpellCode by Aceify app icon and apply it to Android launcher and splash assets.
 - [x] Build and deliver an updated signed Android APK containing the branded logo.
 - [x] Fix Supabase email confirmation so Android users are not redirected to localhost.
-- [ ] Fix Android handling of the published mobile API response and verify authenticated learning data loads.
+- [x] Fix Android handling of the published mobile API response and verify authenticated learning data loads.
 - [x] Rebuild and deliver a corrected signed Android APK after production integration validation.
 - [x] Create a new private GitHub repository in the requested organization and synchronize the completed SpellCode source code.
