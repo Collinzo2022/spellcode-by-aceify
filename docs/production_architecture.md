@@ -13,25 +13,24 @@ The former Drizzle/MySQL implementation has been removed from the active codebas
 | Billing, Paystack verification, entitlements | Supabase Postgres plus Paystack webhooks |
 | Published projects and certificate artifacts | Managed storage plus Supabase metadata |
 | Web frontend | Vite/React static output |
-| API, tRPC, mobile routes, Paystack webhook | Express handler exported as a Vercel Function |
+| API, tRPC, mobile routes, Paystack webhook | Stable Manus-hosted Express backend |
 
 ## Vercel deployment contract
 
 Vercel builds the Vite client into `dist/public` with `pnpm vite build`. The root `vercel.json` declares that directory as the deployment output and preserves SPA navigation by rewriting non-API routes to `index.html`.
 
-The API entrypoint is `api/[...path].ts`. It exports the shared Express application without calling `listen()`, allowing Vercel to execute the existing tRPC API, mobile API, storage proxy, and `/api/paystack/webhook` endpoint as a serverless function. The local Manus server uses the same shared application through `server/app.ts` before attaching Vite middleware or static serving.
+Vercel serves the static Vite client and rewrites every `/api/*` request to the stable Manus-hosted Express backend at `https://spellcode-tnyv8stq.manus.space`. This keeps browser requests same-origin at the Vercel domain while preserving the backend’s managed storage, AI, Paystack, and Supabase integration environment. The local and Manus-hosted backend use the shared application in `server/app.ts` before attaching Vite middleware or static serving.
 
 ## Required Vercel environment variables
 
-Configure these in Vercel for **Production** and any preview environment that must exercise authenticated API behavior. Do not commit values to the repository.
+The Vercel static frontend requires no server-side Supabase, Paystack, storage, or AI secrets. Those values remain only in the Manus-hosted backend environment. Do not commit values to the repository.
 
 | Variable | Purpose |
 |---|---|
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Browser and bearer-token validation key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase data access |
-| `PAYSTACK_SECRET_KEY` | Checkout verification and webhook signature validation |
-| `JWT_SECRET` | Cookie/signing compatibility for framework infrastructure |
-| `BUILT_IN_FORGE_API_URL` and `BUILT_IN_FORGE_API_KEY` | Server-side managed storage and AI features, where enabled |
+| `SUPABASE_URL` | Manus-hosted backend only: Supabase project URL |
+| `SUPABASE_ANON_KEY` | Manus-hosted backend only: Supabase bearer-token validation |
+| `SUPABASE_SERVICE_ROLE_KEY` | Manus-hosted backend only: server-side Supabase data access |
+| `PAYSTACK_SECRET_KEY` | Manus-hosted backend only: checkout and webhook verification |
+| `BUILT_IN_FORGE_API_URL` and `BUILT_IN_FORGE_API_KEY` | Manus-hosted backend only: managed storage and AI features |
 
-After importing this repository into Vercel, use the repository root as the project root. Do not set `server/_core/index.ts` as Vercel's entrypoint and do not use a command that serves TypeScript source directly. Vercel must use the committed `vercel.json`, `api/[...path].ts`, and Vite build output.
+After importing this repository into Vercel, use the repository root as the project root. Do not set `server/_core/index.ts` as Vercel's entrypoint and do not configure a Vercel server function. Vercel must use the committed `vercel.json` and Vite build output. Keep Paystack's webhook configured directly to `https://spellcode-tnyv8stq.manus.space/api/paystack/webhook`.

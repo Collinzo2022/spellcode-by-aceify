@@ -58,4 +58,4 @@
 - [ ] Audit and correct the Vercel build and entrypoint configuration so it serves the SpellCode application rather than raw server source.
 - [ ] Reconcile the legacy Drizzle/MySQL artifacts with the active Supabase/Postgres data model and retain one authoritative production database path.
 - [ ] Validate the corrected external deployment and document the final production architecture.
-- [ ] Fix Vercel serverless API route emission so the deployed web frontend and mobile/tRPC APIs are both available.
+- [ ] Configure the Vercel static frontend to proxy web API requests to the stable Manus backend, so web, mobile, and tRPC APIs remain available without a Vercel serverless function.
