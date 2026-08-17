@@ -55,7 +55,7 @@
 - [x] Fix Android handling of the published mobile API response and verify authenticated learning data loads.
 - [x] Rebuild and deliver a corrected signed Android APK after production integration validation.
 - [x] Create a new private GitHub repository in the requested organization and synchronize the completed SpellCode source code.
-- [ ] Audit and correct the Vercel build and entrypoint configuration so it serves the SpellCode application rather than raw server source.
-- [ ] Reconcile the legacy Drizzle/MySQL artifacts with the active Supabase/Postgres data model and retain one authoritative production database path.
-- [ ] Validate the corrected external deployment and document the final production architecture.
-- [ ] Configure the Vercel static frontend to proxy web API requests to the stable Manus backend, so web, mobile, and tRPC APIs remain available without a Vercel serverless function.
+- [x] Audit and correct the Vercel build and entrypoint configuration so it serves the SpellCode application rather than raw server source.
+- [x] Reconcile the legacy Drizzle/MySQL artifacts with the active Supabase/Postgres data model and retain one authoritative production database path.
+- [x] Validate the corrected external deployment and document the final production architecture.
+- [x] Configure the Vercel static frontend to proxy web API requests to the stable Manus backend, so web, mobile, and tRPC APIs remain available without a Vercel serverless function.
