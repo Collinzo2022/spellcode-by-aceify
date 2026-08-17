@@ -1,5 +1,16 @@
-import type { User } from "../drizzle/schema";
 import { ENV } from "./_core/env";
+
+export type AppUser = {
+  id: string;
+  openId: string;
+  name: string;
+  email: string | null;
+  loginMethod: "supabase";
+  role: "user" | "admin";
+  createdAt: Date;
+  updatedAt: Date;
+  lastSignedIn: Date;
+};
 
 type SupabaseAuthUser = {
   id: string;
@@ -26,7 +37,7 @@ export function getSupabasePublicConfig() {
   return { url: ENV.supabaseUrl, anonKey: ENV.supabaseAnonKey };
 }
 
-export async function getSupabaseSessionUser(accessToken: string): Promise<User | null> {
+export async function getSupabaseSessionUser(accessToken: string): Promise<AppUser | null> {
   assertSupabaseConfig();
   const authResponse = await fetch(`${ENV.supabaseUrl}/auth/v1/user`, {
     headers: { apikey: ENV.supabaseAnonKey, Authorization: `Bearer ${accessToken}` },
@@ -48,7 +59,7 @@ export async function getSupabaseSessionUser(accessToken: string): Promise<User 
   const fallbackName = authUser.user_metadata?.display_name ?? authUser.user_metadata?.full_name ?? authUser.user_metadata?.name ?? authUser.email ?? "Learner";
 
   return {
-    id: -1,
+    id: authUser.id,
     openId: authUser.id,
     name: profile?.display_name ?? fallbackName,
     email: authUser.email ?? null,

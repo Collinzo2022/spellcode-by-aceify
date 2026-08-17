@@ -1,8 +1,7 @@
 import { CURRICULUM, PROJECTS } from "@shared/curriculum";
 import { z } from "zod";
-import * as db from "../db";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
-import { completeDailyLearningTask, getDailyLearningOverview, getVerifiedEntitlements } from "../supabaseLearning";
+import { completeDailyLearningTask, completeSupabaseLesson, enrollSupabaseTrack, getDailyLearningOverview, getSupabaseLearnerDashboard, getVerifiedEntitlements, recordSupabaseChallengeAttempt, recordSupabaseProjectCompletion } from "../supabaseLearning";
 import { lessonRequiresFullAccess } from "../../shared/entitlements";
 
 const lessonInput = z.object({
@@ -21,16 +20,16 @@ async function requireLessonAccess(userId: string, lessonId: string) {
 
 export const learningRouter = router({
   catalog: publicProcedure.query(() => ({ tracks: CURRICULUM, projects: PROJECTS })),
-  dashboard: protectedProcedure.query(async ({ ctx }) => db.getLearnerDashboard(ctx.user.id)),
+  dashboard: protectedProcedure.query(async ({ ctx }) => getSupabaseLearnerDashboard(ctx.user.openId)),
   dailyOverview: protectedProcedure.query(async ({ ctx }) => getDailyLearningOverview(ctx.user.openId)),
   completeDailyTask: protectedProcedure.input(z.object({ score: z.number().int().min(0).max(100), submittedCode: z.object({ html: z.string().max(20_000).optional(), css: z.string().max(20_000).optional(), javascript: z.string().max(20_000).optional() }).optional() })).mutation(async ({ ctx, input }) => completeDailyLearningTask(ctx.user.openId, input)),
-  profile: protectedProcedure.query(async ({ ctx }) => db.getLearnerProfile(ctx.user.id)),
+  profile: protectedProcedure.query(async ({ ctx }) => getSupabaseLearnerDashboard(ctx.user.openId)),
   enrollTrack: protectedProcedure
     .input(z.object({ trackId: z.string().refine(value => ["html", "css", "javascript"].includes(value), "Unknown track") }))
-    .mutation(async ({ ctx, input }) => db.enrollInTrack({ userId: ctx.user.id, ...input })),
+    .mutation(async ({ ctx, input }) => enrollSupabaseTrack(ctx.user.openId, input.trackId)),
   completeLesson: protectedProcedure.input(lessonInput).mutation(async ({ ctx, input }) => {
     await requireLessonAccess(ctx.user.openId, input.lessonId);
-    return db.completeLesson({ userId: ctx.user.id, ...input });
+    return completeSupabaseLesson(ctx.user.openId, input);
   }),
   submitChallenge: protectedProcedure
     .input(
@@ -41,8 +40,8 @@ export const learningRouter = router({
         summary: z.string().min(1).max(280),
       }),
     )
-    .mutation(async ({ ctx, input }) => { await requireLessonAccess(ctx.user.openId, input.challengeId); return db.recordChallengeAttempt({ userId: ctx.user.id, ...input }); }),
+    .mutation(async ({ ctx, input }) => { await requireLessonAccess(ctx.user.openId, input.challengeId); return recordSupabaseChallengeAttempt(ctx.user.openId, input); }),
   completeProject: protectedProcedure
     .input(z.object({ projectId: z.string().min(1).max(80), title: z.string().min(1).max(120) }))
-    .mutation(async ({ ctx, input }) => db.recordProjectCompletion({ userId: ctx.user.id, ...input })),
+    .mutation(async ({ ctx, input }) => recordSupabaseProjectCompletion(ctx.user.openId, input)),
 });

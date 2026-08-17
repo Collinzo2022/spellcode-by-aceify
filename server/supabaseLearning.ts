@@ -74,3 +74,100 @@ export async function completeDailyLearningTask(userId: string, input: { score: 
   await supabaseAdminRequest("/rest/v1/activity_events", { method: "POST", body: JSON.stringify({ user_id: userId, event_type: "daily_task", title: "Daily task completed", detail: `Completed ${overview.task.title}.`, metadata: { daily_task_id: overview.task.id, score: input.score, submitted_code: input.submittedCode ?? {} } }) });
   return { alreadyCompleted: false, awardedXp: overview.task.xp_reward, streak: nextStreak };
 }
+
+type EnrollmentRow = { id: string; track_id: string };
+type ProgressRow = { id: string; lesson_id: string; state: "not_started" | "in_progress" | "completed"; xp_earned: number };
+type ActivityRow = { id: string; event_type: string; title: string; detail: string | null; created_at: string };
+type AchievementRow = { id: string; slug: string };
+type UserAchievementRow = { achievement_id: string };
+
+async function addActivity(userId: string, eventType: string, title: string, detail: string, metadata: Record<string, unknown> = {}) {
+  await supabaseAdminRequest("/rest/v1/activity_events", { method: "POST", body: JSON.stringify({ user_id: userId, event_type: eventType, title, detail, metadata }) });
+}
+
+async function addXp(userId: string, amount: number) {
+  const profiles = await supabaseAdminRequest<Array<{ xp: number; current_streak: number; longest_streak: number }>>(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=xp,current_streak,longest_streak&limit=1`);
+  const profile = profiles[0] ?? { xp: 0, current_streak: 0, longest_streak: 0 };
+  await supabaseAdminRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, { method: "PATCH", body: JSON.stringify({ xp: profile.xp + amount, current_streak: Math.max(profile.current_streak, 1), longest_streak: Math.max(profile.longest_streak, 1), updated_at: new Date().toISOString() }) });
+}
+
+async function awardAchievement(userId: string, slug: string) {
+  const achievements = await supabaseAdminRequest<AchievementRow[]>(`/rest/v1/achievements?slug=eq.${encodeURIComponent(slug)}&select=id,slug&limit=1`);
+  const achievement = achievements[0];
+  if (!achievement) return;
+  await supabaseAdminRequest("/rest/v1/user_achievements?on_conflict=user_id,achievement_id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates" }, body: JSON.stringify({ user_id: userId, achievement_id: achievement.id }) });
+}
+
+export async function getSupabaseLearnerDashboard(userId: string) {
+  const { tracks, lessons } = await ensureSupabaseCurriculum();
+  const [profiles, enrollments, progress, activity, userAchievements] = await Promise.all([
+    supabaseAdminRequest<ProfileRow[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}&select=id,xp,current_streak,longest_streak,last_learning_at&limit=1`),
+    supabaseAdminRequest<EnrollmentRow[]>(`/rest/v1/enrollments?user_id=eq.${encodeURIComponent(userId)}&select=id,track_id`),
+    supabaseAdminRequest<ProgressRow[]>(`/rest/v1/lesson_progress?user_id=eq.${encodeURIComponent(userId)}&select=id,lesson_id,state,xp_earned`),
+    supabaseAdminRequest<ActivityRow[]>(`/rest/v1/activity_events?user_id=eq.${encodeURIComponent(userId)}&select=id,event_type,title,detail,created_at&order=created_at.desc&limit=6`),
+    supabaseAdminRequest<UserAchievementRow[]>(`/rest/v1/user_achievements?user_id=eq.${encodeURIComponent(userId)}&select=achievement_id`),
+  ]);
+  const profile = profiles[0] ?? { id: userId, xp: 0, current_streak: 0, longest_streak: 0, last_learning_at: null };
+  const lessonById = new Map(lessons.map(lesson => [lesson.id, lesson]));
+  const trackById = new Map(Array.from(tracks.values()).map(track => [track.id, track]));
+  const completedLessons = progress.filter(item => item.state === "completed").length;
+  const achievementIds = userAchievements.map(item => item.achievement_id);
+  const achievements = achievementIds.length ? await supabaseAdminRequest<AchievementRow[]>(`/rest/v1/achievements?id=in.(${achievementIds.join(",")})&select=id,slug`) : [];
+  return {
+    stats: { xp: profile.xp, streak: profile.current_streak, completedLessons },
+    progress: progress.map(item => {
+      const lesson = lessonById.get(item.lesson_id);
+      const track = lesson ? trackById.get(lesson.track_id) : undefined;
+      return { id: item.id, lessonId: lesson?.slug ?? item.lesson_id, track: track?.name ?? "HTML", difficulty: lesson?.difficulty ?? "Beginner", status: item.state === "completed" ? "completed" : "in_progress", xpEarned: item.xp_earned };
+    }),
+    activity: activity.map(item => ({ id: item.id, type: item.event_type, title: item.title, detail: item.detail ?? "" })),
+    achievements: achievements.map(item => ({ achievementId: item.slug })),
+    enrollments: enrollments.map(item => ({ id: item.id, trackId: trackById.get(item.track_id)?.slug ?? item.track_id })),
+  };
+}
+
+export async function enrollSupabaseTrack(userId: string, trackSlug: string) {
+  const { tracks } = await ensureSupabaseCurriculum();
+  const track = tracks.get(trackSlug);
+  if (!track) throw new Error("Unknown track");
+  await supabaseAdminRequest("/rest/v1/enrollments?on_conflict=user_id,track_id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates" }, body: JSON.stringify({ user_id: userId, track_id: track.id }) });
+  await addActivity(userId, "enrollment", "Track added", `Added the ${track.name} track to your learning path.`, { track_slug: trackSlug });
+  return { enrolled: true, trackId: trackSlug };
+}
+
+export async function completeSupabaseLesson(userId: string, input: { lessonId: string; track: "HTML" | "CSS" | "JavaScript"; difficulty: "Beginner" | "Intermediate" | "Advanced"; xp: number }) {
+  const { lessons } = await ensureSupabaseCurriculum();
+  const lesson = lessons.find(item => item.slug === input.lessonId);
+  if (!lesson) throw new Error("Lesson is not available yet");
+  const existing = await supabaseAdminRequest<Array<{ state: string }>>(`/rest/v1/lesson_progress?user_id=eq.${encodeURIComponent(userId)}&lesson_id=eq.${lesson.id}&select=state&limit=1`);
+  const isNewCompletion = existing[0]?.state !== "completed";
+  await supabaseAdminRequest("/rest/v1/lesson_progress?on_conflict=user_id,lesson_id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: userId, lesson_id: lesson.id, state: "completed", score: 100, xp_earned: input.xp, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
+  if (isNewCompletion) {
+    await addXp(userId, input.xp);
+    await addActivity(userId, "lesson", "Lesson completed", `Completed ${input.lessonId.replace(/-/g, " ")}.`, { lesson_slug: input.lessonId });
+    await awardAchievement(userId, "first-spark");
+  }
+  return { completed: true, isNewCompletion, awardedXp: isNewCompletion ? input.xp : 0 };
+}
+
+export async function recordSupabaseChallengeAttempt(userId: string, input: { challengeId: string; score: number; passed: boolean; summary: string }) {
+  const { lessons } = await ensureSupabaseCurriculum();
+  const lesson = lessons.find(item => item.slug === input.challengeId);
+  if (!lesson) throw new Error("Challenge is not available yet");
+  const challenges = await supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/challenges?lesson_id=eq.${lesson.id}&select=id&limit=1`);
+  const challenge = challenges[0];
+  if (!challenge) throw new Error("Challenge is not available yet");
+  const awardedXp = input.passed ? 20 : 0;
+  await supabaseAdminRequest("/rest/v1/challenge_attempts", { method: "POST", body: JSON.stringify({ user_id: userId, challenge_id: challenge.id, score: input.score, passed: input.passed, feedback: { summary: input.summary } }) });
+  await addActivity(userId, "challenge", input.passed ? "Challenge passed" : "Challenge attempted", input.summary, { lesson_slug: input.challengeId, score: input.score });
+  if (awardedXp) await addXp(userId, awardedXp);
+  return { saved: true, awardedXp };
+}
+
+export async function recordSupabaseProjectCompletion(userId: string, input: { projectId: string; title: string }) {
+  const awardedXp = 100;
+  await addXp(userId, awardedXp);
+  await addActivity(userId, "project", "Project completed", `Completed the ${input.title} project.`, { project_slug: input.projectId });
+  await awardAchievement(userId, "builder");
+  return { saved: true, projectId: input.projectId, awardedXp };
+}
