@@ -59,3 +59,11 @@
 - [x] Reconcile the legacy Drizzle/MySQL artifacts with the active Supabase/Postgres data model and retain one authoritative production database path.
 - [x] Validate the corrected external deployment and document the final production architecture.
 - [x] Configure the Vercel static frontend to proxy web API requests to the stable Manus backend, so web, mobile, and tRPC APIs remain available without a Vercel serverless function.
+- [x] Verify and correct the exact Vercel production alias so external users consistently receive the rendered SpellCode site rather than source-like content.
+- [x] Audit Vercel production logs and environment configuration to confirm no database connection string or MySQL dependency remains active.
+- [x] Verify the committed Supabase migration scripts cover the authoritative production schema and are documented for replay.
+- [x] Validate Supabase authentication and learner-stat responses through the deployed application data path.
+- [ ] Validate an authenticated deployed learner dashboard request with a real Supabase bearer session and confirm live XP, streak, progress, and activity data are returned.
+- [x] Apply `supabase_auth_profile_bridge_migration.sql` in the Supabase SQL Editor to enable automatic profile creation for all future authenticated learners.
+- [x] Add a confirm-password field with matching client-side validation to the SpellCode sign-up form.
+- [x] Add accessible show/hide password controls to both sign-up password fields.

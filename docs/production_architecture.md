@@ -6,6 +6,12 @@
 
 The former Drizzle/MySQL implementation has been removed from the active codebase. No server route, tRPC procedure, or authentication flow reads or writes the legacy `users`, `learnerStats`, `trackEnrollments`, `lessonProgress`, `challengeAttempts`, `learnerAchievements`, or `learningActivity` tables.
 
+## Supabase schema replay order
+
+Run the committed SQL files in the Supabase SQL Editor in this order when initializing a new environment: `supabase_schema_draft.sql`, `supabase_auth_profile_bridge_migration.sql`, `supabase_daily_admin_payments_migration.sql`, `supabase_project_publishing_migration.sql`, `supabase_certificate_issuance_migration.sql`, and `supabase_admin_reporting_views.sql`. The auth-profile bridge creates one `public.profiles` row for every new `auth.users` identity, which provides the durable row used for learner XP, streak, completed lessons, activity, and role.
+
+The backend also provisions a missing profile idempotently on an authenticated request, protecting existing users created before the trigger was installed. This fallback does not replace the database trigger; the trigger is the normal sign-up path.
+
 | Concern | Authoritative component |
 |---|---|
 | Identity and sessions | Supabase Auth bearer tokens |

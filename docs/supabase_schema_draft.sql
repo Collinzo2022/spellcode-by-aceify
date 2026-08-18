@@ -256,7 +256,6 @@ create policy "activity_events_read_own" on public.activity_events for select us
 create policy "subscriptions_read_own" on public.subscriptions for select using (auth.uid() = user_id);
 create policy "payments_read_own" on public.payment_transactions for select using (auth.uid() = user_id);
 
--- Add a security-definer trigger to create profiles from auth.users before enabling self-service signup.
+-- Then run supabase_auth_profile_bridge_migration.sql to create profiles from auth.users before enabling self-service signup.
 -- Content tables (`tracks`, `lessons`, `challenges`, `projects`, `project_steps`, `achievements`, and `plans`)
 -- should have read-only policies for published records and server/admin-only write access.
-
