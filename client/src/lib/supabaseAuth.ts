@@ -1,25 +1,60 @@
-export type SupabasePublicConfig = { url: string; anonKey: string };
 type SupabaseSession = { access_token: string; refresh_token: string; expires_at?: number; user: { id: string; email?: string } };
+
+type SupabaseErrorBody = { error_description?: string; msg?: string; code?: string };
+
+type SupabasePublicConfig = { url: string; anonKey: string };
+
+export class SupabaseAuthError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code?: string,
+  ) {
+    super(message);
+    this.name = "SupabaseAuthError";
+  }
+}
 
 const STORAGE_KEY = "spellcode-supabase-session";
 
 export function getSupabaseAccessToken() {
-  try { return (JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as SupabaseSession | null)?.access_token ?? null; } catch { return null; }
+  try {
+    return (JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as SupabaseSession | null)?.access_token ?? null;
+  } catch {
+    return null;
+  }
 }
 
-export function clearSupabaseSession() { try { localStorage.removeItem(STORAGE_KEY); } catch {} }
+export function clearSupabaseSession() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {}
+}
 
-function persist(session: SupabaseSession) { localStorage.setItem(STORAGE_KEY, JSON.stringify(session)); }
+function persist(session: SupabaseSession) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+}
 
 async function callSupabase(config: SupabasePublicConfig, path: string, payload: Record<string, unknown>) {
-  const response = await fetch(`${config.url}${path}`, { method: "POST", headers: { apikey: config.anonKey, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-  const body = await response.json() as SupabaseSession & { error_description?: string; msg?: string };
-  if (!response.ok) throw new Error(body.error_description ?? body.msg ?? "Unable to authenticate.");
+  const response = await fetch(`${config.url}${path}`, {
+    method: "POST",
+    headers: { apikey: config.anonKey, "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = (await response.json()) as SupabaseSession & SupabaseErrorBody;
+
+  if (!response.ok) {
+    throw new SupabaseAuthError(body.error_description ?? body.msg ?? "Unable to authenticate.", response.status, body.code);
+  }
+
   if (body.access_token) persist(body);
   return body;
 }
 
-export function signInWithPassword(config: SupabasePublicConfig, email: string, password: string) { return callSupabase(config, "/auth/v1/token?grant_type=password", { email, password }); }
+export function signInWithPassword(config: SupabasePublicConfig, email: string, password: string) {
+  return callSupabase(config, "/auth/v1/token?grant_type=password", { email, password });
+}
+
 export function signUpWithPassword(config: SupabasePublicConfig, email: string, password: string, displayName: string) {
   const emailRedirectTo = typeof window === "undefined" ? undefined : `${window.location.origin}/auth/confirmed`;
   return callSupabase(config, "/auth/v1/signup", { email, password, data: { display_name: displayName }, options: { emailRedirectTo } });

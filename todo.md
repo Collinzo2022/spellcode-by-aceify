@@ -67,3 +67,14 @@
 - [x] Apply `supabase_auth_profile_bridge_migration.sql` in the Supabase SQL Editor to enable automatic profile creation for all future authenticated learners.
 - [x] Add a confirm-password field with matching client-side validation to the SpellCode sign-up form.
 - [x] Add accessible show/hide password controls to both sign-up password fields.
+- [x] Handle Supabase email rate-limit errors in sign-up with clear recovery guidance and prevent avoidable repeated confirmation-email requests.
+- [x] Create a game-like beginner learning journey with a visible path, short missions, XP rewards, progress milestones, and encouraging completion feedback.
+- [x] Add persistent, accessible light/dark mode control available throughout the website.
+- [x] Add email-keyed signup resend protection after a successful confirmation-email request and cover the cooldown flow with focused tests.
+- [x] Extend the beginner quest into authenticated learning flows with data-backed mission milestones, progress, and completion feedback.
+- [x] Refactor major route shells to use theme-aware styling and verify light/dark readability across each primary experience.
+- [x] Extend the data-backed beginner quest into the authenticated Daily and Lesson flows with real XP and completion feedback.
+- [x] Refactor the remaining primary routes to explicit theme-aware styles and verify both light and dark readability for Home, Auth, Dashboard, Daily, Curriculum, Access, Projects, Profile, Admin, and Certificate.
+- [x] Refactor Access, Projects, Profile, Admin, Certificate, Curriculum, and remaining route shells to explicit theme-aware classes rather than broad fallback overrides.
+- [x] Visually verify both light and dark modes for Home, Auth, Dashboard, Daily, Curriculum, Access, Projects, Profile, Admin, and Certificate, then record the results.
+- [x] Replace broad global light-mode fallback selectors with explicit theme-aware page classes or tokens on Access, Projects, Profile, Admin, Certificate, Curriculum, and remaining route shells, then repeat two-theme checks.
