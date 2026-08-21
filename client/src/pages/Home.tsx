@@ -2,7 +2,6 @@ import { AppFooter } from "@/components/spellcode/AppFooter";
 import { AppHeader } from "@/components/spellcode/AppHeader";
 import { BeginnerQuest } from "@/components/spellcode/BeginnerQuest";
 import { SectionHeading } from "@/components/spellcode/SectionHeading";
-import { startAccountCreation } from "@/const";
 import { CURRICULUM } from "@shared/curriculum";
 import { ArrowRight, BookOpenCheck, Code2, Layers3, Play, Sparkles, TerminalSquare, Trophy } from "lucide-react";
 import { Link } from "wouter";
@@ -27,7 +26,7 @@ export default function Home() {
               <h1 className="mt-7 font-display text-[3.35rem] font-medium leading-[.98] tracking-[-0.06em] text-[#f8f5ef] sm:text-7xl">Start small.<br />Build <span className="text-[#cdb7ff]">real skills.</span><br />Keep going.</h1>
               <p className="mt-7 max-w-xl text-[17px] leading-8 text-[#b6b1bb]">SpellCode by Aceify turns beginner web development into short, interactive missions. Learn a concept, write the code, earn XP, and unlock your next win.</p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <button onClick={startAccountCreation} className="inline-flex items-center justify-center gap-2 rounded-full bg-[#f0ebe3] px-5 py-3.5 text-sm font-semibold text-[#18161a] transition hover:bg-white active:scale-[.97]">Start your first mission <Play className="size-4 fill-current" /></button>
+                <Link href="/beginner-lab" className="inline-flex items-center justify-center gap-2 rounded-full bg-[#f0ebe3] px-5 py-3.5 text-sm font-semibold text-[#18161a] transition hover:bg-white active:scale-[.97]">Start your first mission <Play className="size-4 fill-current" /></Link>
                 <Link href="/learn/html/html-foundations" className="inline-flex items-center justify-center gap-2 rounded-full border border-white/[0.13] px-5 py-3.5 text-sm font-semibold text-[#e4dfe7] transition hover:border-white/30 hover:bg-white/[0.04]">Try a lesson <BookOpenCheck className="size-4" /></Link>
               </div>
               <div className="mt-11 flex flex-wrap gap-x-8 gap-y-4 border-t border-white/[0.08] pt-6"><span className="inline-flex items-center gap-2 text-sm text-[#a9a4ae]"><span className="size-1.5 rounded-full bg-[#8acc9e]" /> 10–20 minute missions</span><span className="inline-flex items-center gap-2 text-sm text-[#a9a4ae]"><span className="size-1.5 rounded-full bg-[#8b76df]" /> XP and streaks</span><span className="inline-flex items-center gap-2 text-sm text-[#a9a4ae]"><span className="size-1.5 rounded-full bg-[#d1a366]" /> Real code, in browser</span></div>

@@ -1,7 +1,7 @@
 import { CURRICULUM, PROJECTS } from "@shared/curriculum";
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
-import { completeDailyLearningTask, completeSupabaseLesson, enrollSupabaseTrack, getDailyLearningOverview, getSupabaseLearnerDashboard, getVerifiedEntitlements, recordSupabaseChallengeAttempt, recordSupabaseProjectCompletion } from "../supabaseLearning";
+import { completeBeginnerBuildMission, completeDailyLearningTask, completeSupabaseLesson, enrollSupabaseTrack, getDailyLearningOverview, getSupabaseLearnerDashboard, getVerifiedEntitlements, recordSupabaseChallengeAttempt, recordSupabaseProjectCompletion } from "../supabaseLearning";
 import { lessonRequiresFullAccess } from "../../shared/entitlements";
 
 const lessonInput = z.object({
@@ -23,6 +23,7 @@ export const learningRouter = router({
   dashboard: protectedProcedure.query(async ({ ctx }) => getSupabaseLearnerDashboard(ctx.user.openId)),
   dailyOverview: protectedProcedure.query(async ({ ctx }) => getDailyLearningOverview(ctx.user.openId)),
   completeDailyTask: protectedProcedure.input(z.object({ score: z.number().int().min(0).max(100), submittedCode: z.object({ html: z.string().max(20_000).optional(), css: z.string().max(20_000).optional(), javascript: z.string().max(20_000).optional() }).optional() })).mutation(async ({ ctx, input }) => completeDailyLearningTask(ctx.user.openId, input)),
+  completeBeginnerMission: protectedProcedure.input(z.object({ missionId: z.string().min(1).max(40), code: z.string().min(1).max(20_000) })).mutation(async ({ ctx, input }) => completeBeginnerBuildMission(ctx.user.openId, input)),
   profile: protectedProcedure.query(async ({ ctx }) => getSupabaseLearnerDashboard(ctx.user.openId)),
   enrollTrack: protectedProcedure
     .input(z.object({ trackId: z.string().refine(value => ["html", "css", "javascript"].includes(value), "Unknown track") }))

@@ -78,3 +78,6 @@
 - [x] Refactor Access, Projects, Profile, Admin, Certificate, Curriculum, and remaining route shells to explicit theme-aware classes rather than broad fallback overrides.
 - [x] Visually verify both light and dark modes for Home, Auth, Dashboard, Daily, Curriculum, Access, Projects, Profile, Admin, and Certificate, then record the results.
 - [x] Replace broad global light-mode fallback selectors with explicit theme-aware page classes or tokens on Access, Projects, Profile, Admin, Certificate, Curriculum, and remaining route shells, then repeat two-theme checks.
+- [x] Add real, server-persisted awards and badges that unlock only from verifiable learner achievements such as lesson completion, challenge success, daily streaks, XP milestones, and beginner-module completion.
+- [x] Build a dedicated interactive beginner module with guided micro-lessons, editable code, instant checks, practical build steps, and earned mission rewards.
+- [x] Present earned awards, badge criteria, and next goals in the learner dashboard and profile without fabricating achievement data.

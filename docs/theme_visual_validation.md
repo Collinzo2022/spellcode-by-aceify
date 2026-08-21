@@ -13,3 +13,5 @@ Administrator and Certificate access states were also reviewed in both themes. T
 After moving theme scoping into the explicit `spellcode-route-frame`, Home, Full Access, and Certificate were rechecked in both themes. The interactive beginner quest, pricing cards, protected certificate state, navigation, and footer retained contrast and layout integrity.
 
 The class-pattern fallbacks were replaced with route-frame surface, card, foreground, muted-text, border, form, and code tokens. Curriculum, Projects, and Profile were rechecked in light and dark mode after this refactor; their curriculum rows, project cards, protected profile state, navigation, and footer all retained readable contrast.
+
+The interactive Beginner Build Lab was verified in both themes on 21 August 2026. It presents a three-step guided mission path, code editor, immediate browser preview, local build-check feedback, account-aware reward action, and clear text/button contrast in light and dark mode.

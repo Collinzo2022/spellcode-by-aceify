@@ -235,8 +235,4 @@ export const PROJECTS = [
   },
 ] as const;
 
-export const ACHIEVEMENTS = [
-  { id: "first-spark", name: "First Spark", description: "Complete your first lesson." },
-  { id: "steady-hand", name: "Steady Hand", description: "Earn 200 XP through practice." },
-  { id: "builder", name: "Builder", description: "Finish your first guided project." },
-] as const;
+export { AWARD_CATALOG as ACHIEVEMENTS } from "./awards";

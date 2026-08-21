@@ -54,7 +54,7 @@ export function BeginnerQuest({ compact = false, completedLessonIds, xp = 0 }: B
               <p className="mt-2 min-h-12 text-sm leading-5 text-[#afa9b7]">{mission.lesson.objective}</p>
               <div className="mt-5 flex items-center justify-between border-t border-white/[0.09] pt-4">
                 <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#e3cb98]"><Star className="size-3.5 fill-current" /> {isCompleted ? "XP claimed" : `${mission.lesson.xp} XP`}</span>
-                {isUpcoming ? <span className="inline-flex items-center gap-1 text-xs text-[#a8a1af]"><LockKeyhole className="size-3" /> {status}</span> : <Link href={`/learn/${mission.trackId}/${mission.lesson.id}`} className="inline-flex items-center gap-1 text-xs font-semibold text-[#f8f5ef] hover:text-[#e6c990]">{isCompleted ? "Replay" : <><Play className="size-3 fill-current" /> {status}</>}<ArrowRight className="size-3.5" /></Link>}
+                {isUpcoming ? <span className="inline-flex items-center gap-1 text-xs text-[#a8a1af]"><LockKeyhole className="size-3" /> {status}</span> : <Link href={!isCompleted && mission.lesson.id === "html-foundations" ? "/beginner-lab" : `/learn/${mission.trackId}/${mission.lesson.id}`} className="inline-flex items-center gap-1 text-xs font-semibold text-[#f8f5ef] hover:text-[#e6c990]">{isCompleted ? "Replay" : <><Play className="size-3 fill-current" /> {status}</>}<ArrowRight className="size-3.5" /></Link>}
               </div>
             </article>
           );

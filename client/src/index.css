@@ -150,6 +150,17 @@ textarea::selection { background: rgba(200, 175, 255, .35); }
   color: #e8e0f7;
 }
 
+.spellcode-route-frame[data-theme="light"] .beginner-lab .lab-callout,
+.spellcode-route-frame[data-theme="light"] .beginner-lab .lab-callout strong {
+  color: #352e47 !important;
+}
+
+.spellcode-route-frame[data-theme="light"] .beginner-lab .lab-secondary-action {
+  background: #eeeaf6 !important;
+  border-color: rgba(67, 51, 100, .2) !important;
+  color: #332b45 !important;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   a, button, article, .transition-all { transition-timing-function: cubic-bezier(.23, 1, .32, 1); }
 }

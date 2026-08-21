@@ -18,7 +18,8 @@ export default function Daily() {
   const [code, setCode] = useState("// Write your focused practice here\n");
   const complete = trpc.learning.completeDailyTask.useMutation({
     onSuccess: (result) => {
-      toast.success(result.alreadyCompleted ? "Today’s quest is already cleared." : `Daily quest cleared — ${result.awardedXp} XP earned.`);
+      const awards = result.newAwards?.length ? ` Award unlocked: ${result.newAwards.map(award => award.name).join(", ")}.` : "";
+      toast.success(result.alreadyCompleted ? "Today’s quest is already cleared." : `Daily quest cleared — ${result.awardedXp} XP earned.${awards}`);
       utils.learning.dailyOverview.invalidate();
       utils.learning.dashboard.invalidate();
     },

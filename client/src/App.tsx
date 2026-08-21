@@ -3,6 +3,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Access from "@/pages/Access";
 import Admin from "@/pages/Admin";
 import Auth from "@/pages/Auth";
+import BeginnerLab from "@/pages/BeginnerLab";
 import Certificate from "@/pages/Certificate";
 import Curriculum from "@/pages/Curriculum";
 import Daily from "@/pages/Daily";
@@ -25,6 +26,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/auth" component={Auth} />
       <Route path="/auth/confirmed" component={EmailConfirmed} />
+      <Route path="/beginner-lab" component={BeginnerLab} />
       <Route path="/today" component={Daily} />
       <Route path="/access" component={Access} />
       <Route path="/admin" component={Admin} />

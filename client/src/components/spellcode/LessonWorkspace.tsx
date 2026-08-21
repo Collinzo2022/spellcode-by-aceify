@@ -32,7 +32,7 @@ export function LessonWorkspace({ lesson, track }: { lesson: LessonDefinition; t
   const [tab, setTab] = useState<EditorTab>("HTML");
   const [device, setDevice] = useState<Device>("desktop");
   const [result, setResult] = useState<ReturnType<typeof validateChallenge> | null>(null);
-  const completeLesson = trpc.learning.completeLesson.useMutation({ onSuccess: response => { utils.learning.dashboard.invalidate(); toast.success(response.awardedXp ? `Mission cleared — ${response.awardedXp} XP earned. Your quest map is updated.` : "Lesson completion saved. Your quest map is updated."); }, onError: () => toast.error("We could not save your lesson completion.") });
+  const completeLesson = trpc.learning.completeLesson.useMutation({ onSuccess: response => { utils.learning.dashboard.invalidate(); const awards = response.newAwards.length ? ` Award unlocked: ${response.newAwards.map(award => award.name).join(", ")}.` : ""; toast.success(response.awardedXp ? `Mission cleared — ${response.awardedXp} XP earned.${awards}` : "Lesson completion saved. Your quest map is updated."); }, onError: () => toast.error("We could not save your lesson completion.") });
   const submitChallenge = trpc.learning.submitChallenge.useMutation();
 
   const preview = useMemo(() => `<!doctype html><html><head><style>html,body{min-height:100%;margin:0}*{box-sizing:border-box}${css}</style></head><body>${html}<script>${js.split("</script>").join("<\\/script")}</script></body></html>`, [html, css, js]);
