@@ -11,7 +11,7 @@ This blueprint separates **identity**, **learning content**, **learner progress*
 | Learning | `enrollments`, `lesson_progress`, `challenge_attempts`, `activity_events` | Track selection, lesson completion, scores, XP, streak-relevant activity, and the activity feed. |
 | Coding work | `coding_workspaces` | A learner's HTML, CSS, and JavaScript workspace state per lesson. |
 | Projects | `projects`, `project_steps`, `project_progress` | Guided landing-page and calculator projects, milestone completion, and a project submission URL. |
-| Recognition | `achievements`, `user_achievements` | Achievement definitions and earned learner badges. |
+| Recognition | `achievements`, `user_achievements` | Award definitions and Earned Awards. Table names are renamed in ticket 04. |
 | Payments | `plans`, `subscriptions`, `payment_transactions`, `paystack_webhook_events` | Paid plans, Paystack references, verification state, access expiry, and idempotent webhook handling. |
 
 ## Required application values

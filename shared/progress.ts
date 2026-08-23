@@ -10,7 +10,7 @@ export function challengeOutcome(passed: boolean) {
 }
 
 export function projectCompletionOutcome() {
-  return { awardedXp: 100, achievementId: "builder" } as const;
+  return { awardedXp: 100, awardSlug: "builder" } as const;
 }
 
 export function applyLessonCompletion(snapshot: LearnerMetricSnapshot, outcome: ReturnType<typeof lessonCompletionOutcome>): LearnerMetricSnapshot {

@@ -14,7 +14,7 @@ describe("learner progress rules", () => {
     expect(challengeOutcome(false)).toEqual({ awardedXp: 0, status: "needs_revision" });
   });
 
-  it("awards the Builder achievement and XP when a guided project is completed", () => {
-    expect(projectCompletionOutcome()).toEqual({ awardedXp: 100, achievementId: "builder" });
+  it("awards the Builder award and XP when a guided project is completed", () => {
+    expect(projectCompletionOutcome()).toEqual({ awardedXp: 100, awardSlug: "builder" });
   });
 });

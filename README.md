@@ -21,7 +21,7 @@ SpellCode is designed around short, purposeful practice rather than passive watc
 | **Curriculum** | Exactly three tracks: **HTML**, **CSS**, and **JavaScript**, with **Beginner**, **Intermediate**, and **Advanced** lessons. |
 | **Code workspace** | Theory, examples, challenge requirements, progressive hints, HTML/CSS/JavaScript editing, and live preview. |
 | **Daily loop** | Daily coding task, streak tracking, XP, completion recovery states, and activity history. |
-| **Verified awards** | Badges unlock only from persisted evidence: completed lessons, passed coding challenges, streaks, XP, guided projects, and Beginner Build Lab missions. |
+| **Verified awards** | Awards unlock only from persisted evidence: completed lessons, passed coding challenges, streaks, XP, guided projects, and Beginner Build Lab missions. |
 | **Learner records** | Dashboard and profile show real XP, streak, lesson progress, activity, earned awards, award criteria, and measured next goals. |
 | **Full Access** | Paid access gates later lessons, guided-project publishing, certificates, and unlimited AI tutor use. |
 

@@ -29,7 +29,7 @@ export async function ensureSupabaseCurriculum() {
   const lessonMap = new Map(storedLessons.map(lesson => [`${lesson.track_id}:${lesson.slug}`, lesson]));
   const challenges = CURRICULUM.flatMap(track => track.lessons.map(lesson => { const stored = lessonMap.get(`${trackMap.get(track.id)!.id}:${lesson.id}`)!; return { lesson_id: stored.id, prompt: lesson.challenge.prompt, required_fragments: lesson.challenge.required, hint_nudge: lesson.challenge.hint, hint_detail: "Work through the required elements one at a time, then compare the structure with the guided example.", reference_solution: { code: lesson.example } }; }));
   await supabaseAdminRequest("/rest/v1/challenges?on_conflict=lesson_id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(challenges) });
-  await supabaseAdminRequest("/rest/v1/achievements?on_conflict=slug", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(AWARD_CATALOG.map(award => ({ slug: award.id, name: award.name, description: award.description, icon_key: award.iconKey }))) });
+  await supabaseAdminRequest("/rest/v1/achievements?on_conflict=slug", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(AWARD_CATALOG.map(award => ({ slug: award.slug, name: award.name, description: award.description, icon_key: award.iconKey }))) });
   return { tracks: trackMap, lessons: storedLessons };
 }
 
@@ -76,7 +76,7 @@ export async function completeDailyLearningTask(learnerId: string, input: { scor
   await supabaseAdminRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ xp: nextXp, current_streak: nextStreak, longest_streak: Math.max(overview.profile.longest_streak, nextStreak), last_learning_at: `${today}T12:00:00.000Z`, updated_at: new Date().toISOString() }) });
   await supabaseAdminRequest("/rest/v1/activity_events", { method: "POST", body: JSON.stringify({ user_id: learnerId, event_type: "daily_task", title: "Daily task completed", detail: `Completed ${overview.task.title}.`, metadata: { daily_task_id: overview.task.id, score: input.score, submitted_code: input.submittedCode ?? {} } }) });
   const newAwards = await reconcileVerifiedAwards(learnerId);
-  return { alreadyCompleted: false, awardedXp: overview.task.xp_reward, streak: nextStreak, newAwards: newAwards.map(award => ({ achievementId: award.slug, name: award.name })) };
+  return { alreadyCompleted: false, awardedXp: overview.task.xp_reward, streak: nextStreak, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
 }
 
 type EnrollmentRow = { id: string; track_id: string };
@@ -95,7 +95,7 @@ async function addXp(learnerId: string, amount: number) {
   await supabaseAdminRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}`, { method: "PATCH", body: JSON.stringify({ xp: profile.xp + amount, current_streak: Math.max(profile.current_streak, 1), longest_streak: Math.max(profile.longest_streak, 1), updated_at: new Date().toISOString() }) });
 }
 
-async function awardAchievement(learnerId: string, slug: string) {
+async function recordEarnedAward(learnerId: string, slug: string) {
   const achievements = await supabaseAdminRequest<AchievementRow[]>(`/rest/v1/achievements?slug=eq.${encodeURIComponent(slug)}&select=id,slug,name,description,icon_key&limit=1`);
   const achievement = achievements[0];
   if (!achievement) return undefined;
@@ -123,10 +123,10 @@ async function reconcileVerifiedAwards(learnerId: string, providedSnapshot?: Awa
   const snapshot = providedSnapshot ?? await getAwardSnapshot(learnerId);
   const unlocked = [] as AchievementRow[];
   for (const award of verifiedAwards(snapshot).filter(award => award.earned)) {
-    const added = await awardAchievement(learnerId, award.id);
+    const added = await recordEarnedAward(learnerId, award.slug);
     if (added) {
       unlocked.push(added);
-      await addActivity(learnerId, "award", "Award unlocked", `Earned the ${added.name} badge.`, { award_slug: added.slug });
+      await addActivity(learnerId, "award", "Award unlocked", `Earned the ${added.name} award.`, { award_slug: added.slug });
     }
   }
   return unlocked;
@@ -160,8 +160,8 @@ export async function getSupabaseLearnerDashboard(learnerId: string) {
       return { id: item.id, lessonId: lesson?.slug ?? item.lesson_id, track: track?.name ?? "HTML", difficulty: lesson?.difficulty ?? "Beginner", status: item.state === "completed" ? "completed" : "in_progress", xpEarned: item.xp_earned };
     }),
     activity: activity.map(item => ({ id: item.id, type: item.event_type, title: item.title, detail: item.detail ?? "" })),
-    achievements: verifiedAwardCatalog.filter(item => awardedSlugs.has(item.id)).map(item => ({ achievementId: item.id, name: item.name, description: item.description, criteria: item.criteria, iconKey: item.iconKey, current: item.current, target: item.target, earned: true })),
-    nextAwards: verifiedAwardCatalog.filter(item => !awardedSlugs.has(item.id)).slice(0, 3).map(item => ({ achievementId: item.id, name: item.name, description: item.description, criteria: item.criteria, iconKey: item.iconKey, current: item.current, target: item.target })),
+    earnedAwards: verifiedAwardCatalog.filter(item => awardedSlugs.has(item.slug)).map(item => ({ awardSlug: item.slug, name: item.name, description: item.description, criterion: item.criterion, iconKey: item.iconKey, current: item.current, target: item.target, earned: true })),
+    nextAwards: verifiedAwardCatalog.filter(item => !awardedSlugs.has(item.slug)).slice(0, 3).map(item => ({ awardSlug: item.slug, name: item.name, description: item.description, criterion: item.criterion, iconKey: item.iconKey, current: item.current, target: item.target })),
     enrollments: enrollments.map(item => ({ id: item.id, trackId: trackById.get(item.track_id)?.slug ?? item.track_id })),
   };
 }
@@ -186,9 +186,9 @@ export async function completeSupabaseLesson(learnerId: string, input: { lessonI
     await addXp(learnerId, input.xp);
     await addActivity(learnerId, "lesson", "Lesson completed", `Completed ${input.lessonId.replace(/-/g, " ")}.`, { lesson_slug: input.lessonId });
     const newAwards = await reconcileVerifiedAwards(learnerId);
-    return { completed: true, isNewCompletion, awardedXp: input.xp, newAwards: newAwards.map(award => ({ achievementId: award.slug, name: award.name })) };
+    return { completed: true, isNewCompletion, awardedXp: input.xp, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
   }
-  return { completed: true, isNewCompletion, awardedXp: 0, newAwards: [] as Array<{ achievementId: string; name: string }> };
+  return { completed: true, isNewCompletion, awardedXp: 0, newAwards: [] as Array<{ awardSlug: string; name: string }> };
 }
 
 export async function recordSupabaseChallengeAttempt(learnerId: string, input: { challengeId: string; score: number; passed: boolean; summary: string }) {
@@ -203,7 +203,7 @@ export async function recordSupabaseChallengeAttempt(learnerId: string, input: {
   await addActivity(learnerId, "challenge", input.passed ? "Challenge passed" : "Challenge attempted", input.summary, { lesson_slug: input.challengeId, score: input.score });
   if (awardedXp) await addXp(learnerId, awardedXp);
   const newAwards = input.passed ? await reconcileVerifiedAwards(learnerId) : [];
-  return { saved: true, awardedXp, newAwards: newAwards.map(award => ({ achievementId: award.slug, name: award.name })) };
+  return { saved: true, awardedXp, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
 }
 
 export async function recordSupabaseProjectCompletion(learnerId: string, input: { projectId: string; title: string }) {
@@ -211,7 +211,7 @@ export async function recordSupabaseProjectCompletion(learnerId: string, input: 
   await addXp(learnerId, awardedXp);
   await addActivity(learnerId, "project", "Project completed", `Completed the ${input.title} project.`, { project_slug: input.projectId });
   const newAwards = await reconcileVerifiedAwards(learnerId);
-  return { saved: true, projectId: input.projectId, awardedXp, newAwards: newAwards.map(award => ({ achievementId: award.slug, name: award.name })) };
+  return { saved: true, projectId: input.projectId, awardedXp, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
 }
 
 export async function completeBeginnerBuildMission(learnerId: string, input: { missionId: string; code: string }) {
@@ -219,14 +219,14 @@ export async function completeBeginnerBuildMission(learnerId: string, input: { m
   const mission = BEGINNER_BUILD_MISSIONS[missionIndex];
   if (!mission) throw new Error("This beginner build mission is not available.");
   const check = checkBeginnerBuildMission(mission, input.code);
-  if (!check.passed) return { completed: false, score: check.score, missing: check.missing, awardedXp: 0, newAwards: [] as Array<{ achievementId: string; name: string }> };
+  if (!check.passed) return { completed: false, score: check.score, missing: check.missing, awardedXp: 0, newAwards: [] as Array<{ awardSlug: string; name: string }> };
   const existingEvents = await supabaseAdminRequest<Array<{ id: string; metadata: { module?: string; mission_id?: string } }>>(`/rest/v1/activity_events?user_id=eq.${encodeURIComponent(learnerId)}&event_type=eq.beginner_module&select=id,metadata`);
   const completedMissionIds = new Set(existingEvents.filter(item => item.metadata?.module === "beginner-build").map(item => item.metadata?.mission_id).filter((id): id is string => Boolean(id)));
   const requiredPrevious = BEGINNER_BUILD_MISSIONS.slice(0, missionIndex).map(item => item.id);
   if (requiredPrevious.some(id => !completedMissionIds.has(id))) throw new Error("Clear the earlier Beginner Build Lab mission before opening this one.");
-  if (completedMissionIds.has(mission.id)) return { completed: true, alreadyCompleted: true, score: 100, missing: [] as string[], awardedXp: 0, newAwards: [] as Array<{ achievementId: string; name: string }> };
+  if (completedMissionIds.has(mission.id)) return { completed: true, alreadyCompleted: true, score: 100, missing: [] as string[], awardedXp: 0, newAwards: [] as Array<{ awardSlug: string; name: string }> };
   await addXp(learnerId, mission.rewardXp);
   await addActivity(learnerId, "beginner_module", "Beginner Build Lab mission cleared", `Completed ${mission.title}.`, { module: "beginner-build", mission_id: mission.id, score: check.score });
   const newAwards = await reconcileVerifiedAwards(learnerId);
-  return { completed: true, alreadyCompleted: false, score: check.score, missing: [] as string[], awardedXp: mission.rewardXp, newAwards: newAwards.map(award => ({ achievementId: award.slug, name: award.name })) };
+  return { completed: true, alreadyCompleted: false, score: check.score, missing: [] as string[], awardedXp: mission.rewardXp, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
 }
