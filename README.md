@@ -27,7 +27,7 @@ SpellCode is designed around short, purposeful practice rather than passive watc
 
 ### Verified award rules
 
-Awards are not seeded as learner achievements or shown as already earned. The backend recalculates eligibility from Supabase records, writes an achievement only when its criterion is satisfied, and records the unlock in learner activity.
+Awards are not seeded as earned or shown as already unlocked. The backend recalculates eligibility from Supabase records, writes an Earned Award only when its criterion is satisfied, and records the unlock in learner activity.
 
 | Award | Verified condition |
 |---|---|

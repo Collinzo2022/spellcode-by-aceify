@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { awardProgress, AWARD_CATALOG, verifiedAwards } from "../shared/awards";
 import { BEGINNER_BUILD_MISSIONS, checkBeginnerBuildMission } from "../shared/beginnerModule";
+import * as awardsModule from "../shared/awards";
+import * as curriculumModule from "../shared/curriculum";
+import * as progressModule from "../shared/progress";
 
 const emptySnapshot = { xp: 0, currentStreak: 0, completedLessonSlugs: [], passedChallengeCount: 0, completedDailyCount: 0, completedProjectCount: 0, completedBeginnerBuildMissionCount: 0 };
 
@@ -24,6 +27,14 @@ describe("verified SpellCode awards", () => {
     const copy = AWARD_CATALOG.map(award => `${award.name} ${award.description} ${award.criterion}`).join(" ");
 
     expect(copy).not.toMatch(/badge|achievement/i);
+  });
+
+  it("exports no shared identifier named with retired recognition vocabulary", () => {
+    // Copy alone is not enough of a guard: an `AWARD_CATALOG as ACHIEVEMENTS`
+    // re-export survived the ticket 03 sweep because nothing looked at names.
+    const exported = [awardsModule, curriculumModule, progressModule].flatMap(module => Object.keys(module));
+
+    expect(exported.filter(name => /achievement|badge/i.test(name))).toEqual([]);
   });
 
   it("identifies every award by a stable award slug", () => {

@@ -54,8 +54,8 @@ describe("the learner dashboard", () => {
   });
 
   it("separates earned awards from next goals by joining the stored row id to an award slug", async () => {
-    stub.stageRows(new RegExp(`^/rest/v1/user_achievements\\?user_id=eq\\.${LEARNER_ID}`), [{ achievement_id: "row-uuid-1" }]);
-    stub.stageRows(/^\/rest\/v1\/achievements\?select=/, [{ id: "row-uuid-1", slug: "first-spark", name: "First Spark", description: "Your first verified lesson completion.", icon_key: "spark" }]);
+    stub.stageRows(new RegExp(`^/rest/v1/user_awards\\?user_id=eq\\.${LEARNER_ID}`), [{ award_id: "row-uuid-1" }]);
+    stub.stageRows(/^\/rest\/v1\/awards\?select=/, [{ id: "row-uuid-1", slug: "first-spark", name: "First Spark", description: "Your first verified lesson completion.", icon_key: "spark" }]);
 
     const dashboard = await learningRouter.createCaller(ctx).dashboard();
 

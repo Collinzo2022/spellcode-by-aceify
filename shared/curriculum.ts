@@ -235,4 +235,3 @@ export const PROJECTS = [
   },
 ] as const;
 
-export { AWARD_CATALOG as ACHIEVEMENTS } from "./awards";

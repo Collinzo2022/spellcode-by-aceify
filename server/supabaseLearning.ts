@@ -29,7 +29,7 @@ export async function ensureSupabaseCurriculum() {
   const lessonMap = new Map(storedLessons.map(lesson => [`${lesson.track_id}:${lesson.slug}`, lesson]));
   const challenges = CURRICULUM.flatMap(track => track.lessons.map(lesson => { const stored = lessonMap.get(`${trackMap.get(track.id)!.id}:${lesson.id}`)!; return { lesson_id: stored.id, prompt: lesson.challenge.prompt, required_fragments: lesson.challenge.required, hint_nudge: lesson.challenge.hint, hint_detail: "Work through the required elements one at a time, then compare the structure with the guided example.", reference_solution: { code: lesson.example } }; }));
   await supabaseAdminRequest("/rest/v1/challenges?on_conflict=lesson_id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(challenges) });
-  await supabaseAdminRequest("/rest/v1/achievements?on_conflict=slug", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(AWARD_CATALOG.map(award => ({ slug: award.slug, name: award.name, description: award.description, icon_key: award.iconKey }))) });
+  await supabaseAdminRequest("/rest/v1/awards?on_conflict=slug", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(AWARD_CATALOG.map(award => ({ slug: award.slug, name: award.name, description: award.description, icon_key: award.iconKey }))) });
   return { tracks: trackMap, lessons: storedLessons };
 }
 
@@ -82,8 +82,8 @@ export async function completeDailyLearningTask(learnerId: string, input: { scor
 type EnrollmentRow = { id: string; track_id: string };
 type ProgressRow = { id: string; lesson_id: string; state: "not_started" | "in_progress" | "completed"; xp_earned: number };
 type ActivityRow = { id: string; event_type: string; title: string; detail: string | null; created_at: string };
-type AchievementRow = { id: string; slug: string; name: string; description: string; icon_key: string | null };
-type UserAchievementRow = { achievement_id: string };
+type AwardRow = { id: string; slug: string; name: string; description: string; icon_key: string | null };
+type UserAwardRow = { award_id: string };
 
 async function addActivity(learnerId: string, eventType: string, title: string, detail: string, metadata: Record<string, unknown> = {}) {
   await supabaseAdminRequest("/rest/v1/activity_events", { method: "POST", body: JSON.stringify({ user_id: learnerId, event_type: eventType, title, detail, metadata }) });
@@ -96,11 +96,11 @@ async function addXp(learnerId: string, amount: number) {
 }
 
 async function recordEarnedAward(learnerId: string, slug: string) {
-  const achievements = await supabaseAdminRequest<AchievementRow[]>(`/rest/v1/achievements?slug=eq.${encodeURIComponent(slug)}&select=id,slug,name,description,icon_key&limit=1`);
-  const achievement = achievements[0];
-  if (!achievement) return undefined;
-  const created = await supabaseAdminRequest<UserAchievementRow[]>("/rest/v1/user_achievements?on_conflict=user_id,achievement_id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" }, body: JSON.stringify({ user_id: learnerId, achievement_id: achievement.id }) });
-  return created.length ? achievement : undefined;
+  const awards = await supabaseAdminRequest<AwardRow[]>(`/rest/v1/awards?slug=eq.${encodeURIComponent(slug)}&select=id,slug,name,description,icon_key&limit=1`);
+  const award = awards[0];
+  if (!award) return undefined;
+  const created = await supabaseAdminRequest<UserAwardRow[]>("/rest/v1/user_awards?on_conflict=user_id,award_id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" }, body: JSON.stringify({ user_id: learnerId, award_id: award.id }) });
+  return created.length ? award : undefined;
 }
 
 async function getAwardSnapshot(learnerId: string): Promise<AwardMetricSnapshot> {
@@ -121,7 +121,7 @@ async function getAwardSnapshot(learnerId: string): Promise<AwardMetricSnapshot>
 
 async function reconcileVerifiedAwards(learnerId: string, providedSnapshot?: AwardMetricSnapshot) {
   const snapshot = providedSnapshot ?? await getAwardSnapshot(learnerId);
-  const unlocked = [] as AchievementRow[];
+  const unlocked = [] as AwardRow[];
   for (const award of verifiedAwards(snapshot).filter(award => award.earned)) {
     const added = await recordEarnedAward(learnerId, award.slug);
     if (added) {
@@ -136,20 +136,20 @@ export async function getSupabaseLearnerDashboard(learnerId: string) {
   const { tracks, lessons } = await ensureSupabaseCurriculum();
   const awardSnapshot = await getAwardSnapshot(learnerId);
   await reconcileVerifiedAwards(learnerId, awardSnapshot);
-  const [profiles, enrollments, progress, activity, userAchievements] = await Promise.all([
+  const [profiles, enrollments, progress, activity, userAwards] = await Promise.all([
     supabaseAdminRequest<ProfileRow[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=id,xp,current_streak,longest_streak,last_learning_at&limit=1`),
     supabaseAdminRequest<EnrollmentRow[]>(`/rest/v1/enrollments?user_id=eq.${encodeURIComponent(learnerId)}&select=id,track_id`),
     supabaseAdminRequest<ProgressRow[]>(`/rest/v1/lesson_progress?user_id=eq.${encodeURIComponent(learnerId)}&select=id,lesson_id,state,xp_earned`),
     supabaseAdminRequest<ActivityRow[]>(`/rest/v1/activity_events?user_id=eq.${encodeURIComponent(learnerId)}&select=id,event_type,title,detail,created_at&order=created_at.desc&limit=6`),
-    supabaseAdminRequest<UserAchievementRow[]>(`/rest/v1/user_achievements?user_id=eq.${encodeURIComponent(learnerId)}&select=achievement_id`),
+    supabaseAdminRequest<UserAwardRow[]>(`/rest/v1/user_awards?user_id=eq.${encodeURIComponent(learnerId)}&select=award_id`),
   ]);
   const profile = profiles[0] ?? { id: learnerId, xp: 0, current_streak: 0, longest_streak: 0, last_learning_at: null };
   const lessonById = new Map(lessons.map(lesson => [lesson.id, lesson]));
   const trackById = new Map(Array.from(tracks.values()).map(track => [track.id, track]));
   const completedLessons = progress.filter(item => item.state === "completed").length;
-  const achievementIds = new Set(userAchievements.map(item => item.achievement_id));
-  const allAchievements = await supabaseAdminRequest<AchievementRow[]>("/rest/v1/achievements?select=id,slug,name,description,icon_key");
-  const awardedSlugs = new Set(allAchievements.filter(item => achievementIds.has(item.id)).map(item => item.slug));
+  const earnedAwardIds = new Set(userAwards.map(item => item.award_id));
+  const allAwards = await supabaseAdminRequest<AwardRow[]>("/rest/v1/awards?select=id,slug,name,description,icon_key");
+  const awardedSlugs = new Set(allAwards.filter(item => earnedAwardIds.has(item.id)).map(item => item.slug));
   const verifiedAwardCatalog = verifiedAwards(awardSnapshot);
   return {
     stats: { xp: profile.xp, streak: profile.current_streak, completedLessons },

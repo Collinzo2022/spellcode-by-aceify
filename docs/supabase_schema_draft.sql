@@ -144,7 +144,7 @@ create table public.project_progress (
   unique(user_id, project_id)
 );
 
-create table public.achievements (
+create table public.awards (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,
   name text not null,
@@ -154,11 +154,11 @@ create table public.achievements (
   created_at timestamptz not null default now()
 );
 
-create table public.user_achievements (
+create table public.user_awards (
   user_id uuid not null references public.profiles(id) on delete cascade,
-  achievement_id uuid not null references public.achievements(id) on delete cascade,
+  award_id uuid not null references public.awards(id) on delete cascade,
   earned_at timestamptz not null default now(),
-  primary key(user_id, achievement_id)
+  primary key(user_id, award_id)
 );
 
 create table public.activity_events (
@@ -239,7 +239,7 @@ alter table public.lesson_progress enable row level security;
 alter table public.challenge_attempts enable row level security;
 alter table public.coding_workspaces enable row level security;
 alter table public.project_progress enable row level security;
-alter table public.user_achievements enable row level security;
+alter table public.user_awards enable row level security;
 alter table public.activity_events enable row level security;
 alter table public.subscriptions enable row level security;
 alter table public.payment_transactions enable row level security;
@@ -251,11 +251,11 @@ create policy "lesson_progress_manage_own" on public.lesson_progress for all usi
 create policy "challenge_attempts_manage_own" on public.challenge_attempts for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "workspaces_manage_own" on public.coding_workspaces for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "project_progress_manage_own" on public.project_progress for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "user_achievements_read_own" on public.user_achievements for select using (auth.uid() = user_id);
+create policy "user_awards_read_own" on public.user_awards for select using (auth.uid() = user_id);
 create policy "activity_events_read_own" on public.activity_events for select using (auth.uid() = user_id);
 create policy "subscriptions_read_own" on public.subscriptions for select using (auth.uid() = user_id);
 create policy "payments_read_own" on public.payment_transactions for select using (auth.uid() = user_id);
 
 -- Then run supabase_auth_profile_bridge_migration.sql to create profiles from auth.users before enabling self-service signup.
--- Content tables (`tracks`, `lessons`, `challenges`, `projects`, `project_steps`, `achievements`, and `plans`)
+-- Content tables (`tracks`, `lessons`, `challenges`, `projects`, `project_steps`, `awards`, and `plans`)
 -- should have read-only policies for published records and server/admin-only write access.

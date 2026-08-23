@@ -2,7 +2,7 @@
 
 ## Authoritative data platform
 
-**Supabase Postgres is the only production database.** Supabase Auth owns learner identities, while the `profiles` table uses the same UUID as `auth.users`. The application stores curriculum, enrollments, lesson progress, challenge attempts, daily tasks, activity events, achievements, project publications, certificates, plans, subscriptions, and Paystack transaction/webhook records in the Supabase schema.
+**Supabase Postgres is the only production database.** Supabase Auth owns learner identities, while the `profiles` table uses the same UUID as `auth.users`. The application stores curriculum, enrollments, lesson progress, challenge attempts, daily tasks, activity events, awards, project publications, certificates, plans, subscriptions, and Paystack transaction/webhook records in the Supabase schema.
 
 The former Drizzle/MySQL implementation has been removed from the active codebase. No server route, tRPC procedure, or authentication flow reads or writes the legacy `users`, `learnerStats`, `trackEnrollments`, `lessonProgress`, `challengeAttempts`, `learnerAchievements`, or `learningActivity` tables.
 
@@ -12,10 +12,18 @@ Run the committed SQL files in the Supabase SQL Editor in this order when initia
 
 The backend also provisions a missing profile idempotently on an authenticated request, protecting existing users created before the trigger was installed. This fallback does not replace the database trigger; the trigger is the normal sign-up path.
 
+A **new environment initialized from `supabase_schema_draft.sql` already has the current object names and must not run `supabase_award_rename_migration.sql`.** That migration exists only to bring an environment created before the rename into line.
+
+### Migrations that must be run before the application is deployed
+
+`supabase_award_rename_migration.sql` renames the recognition tables to `awards` and `user_awards`. The application queries the new names, so the order is: **run the migration first, then deploy.**
+
+Getting it backwards fails loudly rather than silently. The server-side Supabase helper throws on any non-2xx response and PostgREST answers an unknown table with 404, so a build pointed at the wrong schema errors on its award reads instead of quietly reporting zero Earned Awards. No Learner loses recognition in either direction — the mismatch window is an outage, not data loss, and should be kept short. `supabase_award_rename_rollback.sql` reverses the migration and must be paired with rolling the application back.
+
 | Concern | Authoritative component |
 |---|---|
 | Identity and sessions | Supabase Auth bearer tokens |
-| Learner profile, XP, streak, progress, activity, achievements | Supabase Postgres |
+| Learner profile, XP, streak, progress, activity, awards | Supabase Postgres |
 | Billing, Paystack verification, entitlements | Supabase Postgres plus Paystack webhooks |
 | Published projects and certificate artifacts | Managed storage plus Supabase metadata |
 | Web frontend | Vite/React static output |
