@@ -1,3 +1,4 @@
+import { learnerIdOf } from "../learner";
 import { z } from "zod";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "../_core/trpc";
 import { initializeCheckout, verifyCheckout } from "../paystack";
@@ -11,13 +12,13 @@ export const billingRouter = router({
     const plans = await supabaseAdminRequest<PlanRow[]>("/rest/v1/plans?select=id,code,name,currency,amount_minor,interval,max_installments,paystack_plan_code,paid_features,is_active&order=amount_minor.desc");
     return plans;
   }),
-  myAccess: protectedProcedure.query(async ({ ctx }) => getVerifiedEntitlements(ctx.user.openId)),
+  myAccess: protectedProcedure.query(async ({ ctx }) => getVerifiedEntitlements(learnerIdOf(ctx.user))),
   startCheckout: protectedProcedure.input(z.object({ planCode: z.string().min(1).max(80) })).mutation(async ({ ctx, input }) => {
     const host = ctx.req.get("host");
     const callbackUrl = `${ctx.req.protocol}://${host}/payment/complete`;
-    return initializeCheckout({ userId: ctx.user.openId, email: ctx.user.email ?? "", planCode: input.planCode, callbackUrl });
+    return initializeCheckout({ userId: learnerIdOf(ctx.user), email: ctx.user.email ?? "", planCode: input.planCode, callbackUrl });
   }),
-  verifyCheckout: protectedProcedure.input(z.object({ reference: z.string().min(8).max(180) })).mutation(async ({ ctx, input }) => verifyCheckout(input.reference, ctx.user.openId)),
+  verifyCheckout: protectedProcedure.input(z.object({ reference: z.string().min(8).max(180) })).mutation(async ({ ctx, input }) => verifyCheckout(input.reference, learnerIdOf(ctx.user))),
   adminPlans: adminProcedure.query(async () => supabaseAdminRequest<PlanRow[]>("/rest/v1/plans?select=id,code,name,currency,amount_minor,interval,max_installments,paystack_plan_code,paid_features,is_active&order=amount_minor.desc")),
   updatePlan: adminProcedure.input(z.object({ code: z.string().min(1).max(80), amountMinor: z.number().int().min(0), isActive: z.boolean(), paystackPlanCode: z.string().max(120).nullable() })).mutation(async ({ input }) => {
     await supabaseAdminRequest(`/rest/v1/plans?code=eq.${encodeURIComponent(input.code)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ amount_minor: input.amountMinor, is_active: input.isActive, paystack_plan_code: input.paystackPlanCode || null, updated_at: new Date().toISOString() }) });

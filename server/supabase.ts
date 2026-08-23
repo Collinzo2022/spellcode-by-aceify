@@ -1,16 +1,9 @@
 import { ENV } from "./_core/env";
+import { makeSessionUser, type AppUser } from "./learner";
 
-export type AppUser = {
-  id: string;
-  openId: string;
-  name: string;
-  email: string | null;
-  loginMethod: "supabase";
-  role: "user" | "admin";
-  createdAt: Date;
-  updatedAt: Date;
-  lastSignedIn: Date;
-};
+// The scaffold imports `AppUser` from this module, so the name stays exported
+// here; it is declared at the boundary in ./learner.
+export type { AppUser } from "./learner";
 
 type SupabaseAuthUser = {
   id: string;
@@ -55,20 +48,14 @@ export async function getSupabaseSessionUser(accessToken: string): Promise<AppUs
     const created = await supabaseAdminRequest<SupabaseProfile[]>("/rest/v1/profiles?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates,return=representation" }, body: JSON.stringify({ id: authUser.id, display_name: displayName }) });
     profile = created[0];
   }
-  const now = new Date();
   const fallbackName = authUser.user_metadata?.display_name ?? authUser.user_metadata?.full_name ?? authUser.user_metadata?.name ?? authUser.email ?? "Learner";
 
-  return {
-    id: authUser.id,
-    openId: authUser.id,
+  return makeSessionUser({
+    learnerId: authUser.id,
     name: profile?.display_name ?? fallbackName,
     email: authUser.email ?? null,
-    loginMethod: "supabase",
     role: profile?.role === "admin" ? "admin" : "user",
-    createdAt: now,
-    updatedAt: now,
-    lastSignedIn: now,
-  };
+  });
 }
 
 export async function supabaseAdminRequest<T>(path: string, init: RequestInit = {}): Promise<T> {

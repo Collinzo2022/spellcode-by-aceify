@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSupabaseStub } from "./testing/supabaseStub";
+import { makeSessionUser } from "./learner";
 
 const { supabase, storagePut, invokeLLM } = vi.hoisted(() => ({
   supabase: { current: null as ReturnType<typeof import("./testing/supabaseStub").createSupabaseStub> | null },
@@ -17,7 +18,7 @@ import { tutorRouter } from "./routers/tutor";
 import { certificatesRouter } from "./routers/certificates";
 
 const LEARNER_ID = "learner-1";
-const ctx = { user: { id: 1, openId: LEARNER_ID, name: "Learner", email: "learner@example.com", loginMethod: "supabase", role: "user" }, req: {}, res: {} } as any;
+const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: {}, res: {} } as any;
 
 const COMPLETED_LESSONS = new RegExp(`^/rest/v1/lesson_progress\\?user_id=eq\\.${LEARNER_ID}&state=eq\\.completed`);
 

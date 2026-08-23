@@ -1,3 +1,4 @@
+import { learnerIdOf } from "../learner";
 import { z } from "zod";
 import { invokeLLM } from "../_core/llm";
 import { protectedProcedure, router } from "../_core/trpc";
@@ -7,7 +8,7 @@ const tutorMessage = z.object({ role: z.enum(["user", "assistant"]), content: z.
 
 export const tutorRouter = router({
   ask: protectedProcedure.input(z.object({ messages: z.array(tutorMessage).min(1).max(12) })).mutation(async ({ ctx, input }) => {
-    const access = await getVerifiedEntitlements(ctx.user.openId);
+    const access = await getVerifiedEntitlements(learnerIdOf(ctx.user));
     if (!access.hasFullAccess) throw new Error("The AI tutor is available with Full Access.");
     const response = await invokeLLM({
       model: "gpt-5-mini",

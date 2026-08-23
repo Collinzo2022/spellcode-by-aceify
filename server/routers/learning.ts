@@ -1,3 +1,4 @@
+import { learnerIdOf } from "../learner";
 import { CURRICULUM, PROJECTS } from "@shared/curriculum";
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
@@ -20,17 +21,17 @@ async function requireLessonAccess(userId: string, lessonId: string) {
 
 export const learningRouter = router({
   catalog: publicProcedure.query(() => ({ tracks: CURRICULUM, projects: PROJECTS })),
-  dashboard: protectedProcedure.query(async ({ ctx }) => getSupabaseLearnerDashboard(ctx.user.openId)),
-  dailyOverview: protectedProcedure.query(async ({ ctx }) => getDailyLearningOverview(ctx.user.openId)),
-  completeDailyTask: protectedProcedure.input(z.object({ score: z.number().int().min(0).max(100), submittedCode: z.object({ html: z.string().max(20_000).optional(), css: z.string().max(20_000).optional(), javascript: z.string().max(20_000).optional() }).optional() })).mutation(async ({ ctx, input }) => completeDailyLearningTask(ctx.user.openId, input)),
-  completeBeginnerMission: protectedProcedure.input(z.object({ missionId: z.string().min(1).max(40), code: z.string().min(1).max(20_000) })).mutation(async ({ ctx, input }) => completeBeginnerBuildMission(ctx.user.openId, input)),
-  profile: protectedProcedure.query(async ({ ctx }) => getSupabaseLearnerDashboard(ctx.user.openId)),
+  dashboard: protectedProcedure.query(async ({ ctx }) => getSupabaseLearnerDashboard(learnerIdOf(ctx.user))),
+  dailyOverview: protectedProcedure.query(async ({ ctx }) => getDailyLearningOverview(learnerIdOf(ctx.user))),
+  completeDailyTask: protectedProcedure.input(z.object({ score: z.number().int().min(0).max(100), submittedCode: z.object({ html: z.string().max(20_000).optional(), css: z.string().max(20_000).optional(), javascript: z.string().max(20_000).optional() }).optional() })).mutation(async ({ ctx, input }) => completeDailyLearningTask(learnerIdOf(ctx.user), input)),
+  completeBeginnerMission: protectedProcedure.input(z.object({ missionId: z.string().min(1).max(40), code: z.string().min(1).max(20_000) })).mutation(async ({ ctx, input }) => completeBeginnerBuildMission(learnerIdOf(ctx.user), input)),
+  profile: protectedProcedure.query(async ({ ctx }) => getSupabaseLearnerDashboard(learnerIdOf(ctx.user))),
   enrollTrack: protectedProcedure
     .input(z.object({ trackId: z.string().refine(value => ["html", "css", "javascript"].includes(value), "Unknown track") }))
-    .mutation(async ({ ctx, input }) => enrollSupabaseTrack(ctx.user.openId, input.trackId)),
+    .mutation(async ({ ctx, input }) => enrollSupabaseTrack(learnerIdOf(ctx.user), input.trackId)),
   completeLesson: protectedProcedure.input(lessonInput).mutation(async ({ ctx, input }) => {
-    await requireLessonAccess(ctx.user.openId, input.lessonId);
-    return completeSupabaseLesson(ctx.user.openId, input);
+    await requireLessonAccess(learnerIdOf(ctx.user), input.lessonId);
+    return completeSupabaseLesson(learnerIdOf(ctx.user), input);
   }),
   submitChallenge: protectedProcedure
     .input(
@@ -41,8 +42,8 @@ export const learningRouter = router({
         summary: z.string().min(1).max(280),
       }),
     )
-    .mutation(async ({ ctx, input }) => { await requireLessonAccess(ctx.user.openId, input.challengeId); return recordSupabaseChallengeAttempt(ctx.user.openId, input); }),
+    .mutation(async ({ ctx, input }) => { await requireLessonAccess(learnerIdOf(ctx.user), input.challengeId); return recordSupabaseChallengeAttempt(learnerIdOf(ctx.user), input); }),
   completeProject: protectedProcedure
     .input(z.object({ projectId: z.string().min(1).max(80), title: z.string().min(1).max(120) }))
-    .mutation(async ({ ctx, input }) => recordSupabaseProjectCompletion(ctx.user.openId, input)),
+    .mutation(async ({ ctx, input }) => recordSupabaseProjectCompletion(learnerIdOf(ctx.user), input)),
 });

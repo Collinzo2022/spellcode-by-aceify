@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getSupabaseSessionUser } from "./supabase";
+import { learnerIdOf } from "./learner";
 
 describe("Supabase learner profile provisioning", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -13,7 +14,8 @@ describe("Supabase learner profile provisioning", () => {
 
     const user = await getSupabaseSessionUser("valid-access-token");
 
-    expect(user).toMatchObject({ id: "user-uuid", openId: "user-uuid", name: "Ace Learner", loginMethod: "supabase", role: "user" });
+    expect(user).toMatchObject({ id: "user-uuid", name: "Ace Learner", loginMethod: "supabase", role: "user" });
+    expect(learnerIdOf(user!)).toBe("user-uuid");
     expect(String(fetchMock.mock.calls[2]?.[0])).toContain("/rest/v1/profiles?on_conflict=id");
   });
 });
