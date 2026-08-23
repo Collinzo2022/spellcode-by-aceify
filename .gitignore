@@ -112,3 +112,12 @@ temp/
 # Manus version file (auto-generated, not part of source)
 client/public/__manus__/version.json
 .project-config.json
+
+# AI Skills & Agent Scaffolding (Installed via npx skills add)
+.agents/
+.claude/
+.skills/
+skills-lock.json
+
+# Scratch work & planning (temporary specs/tickets)
+.scratch/
