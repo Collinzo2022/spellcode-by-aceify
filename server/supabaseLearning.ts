@@ -1,4 +1,4 @@
-import { CURRICULUM, type LessonDefinition } from "../shared/curriculum";
+import { CURRICULUM, PROJECTS, type LessonDefinition } from "../shared/curriculum";
 import { supabaseAdminRequest } from "./supabase";
 import { AWARD_CATALOG, verifiedAwards, type AwardMetricSnapshot } from "../shared/awards";
 import { BEGINNER_BUILD_MISSIONS, checkBeginnerBuildMission } from "../shared/beginnerModule";
@@ -7,15 +7,29 @@ type TrackRow = { id: string; slug: string; name: string; color_hex: string | nu
 type LessonRow = { id: string; slug: string; title: string; difficulty: "Beginner" | "Intermediate" | "Advanced"; duration_minutes: number; xp_reward: number; description: string; theory_markdown: string; example_code: { code?: string }; track_id: string };
 type DailyTaskRow = { id: string; task_date: string; title: string; description: string; difficulty: "Beginner" | "Intermediate" | "Advanced"; xp_reward: number; estimated_minutes: number; task_content: { prompt?: string; required?: string[]; hint?: string; lesson_slug?: string; track_slug?: string }; required_plan_code: string | null; lesson_id: string | null };
 type ProfileRow = { id: string; xp: number; current_streak: number; longest_streak: number; last_learning_at: string | null };
+type ProjectRow = { id: string; slug: string };
 type CompletionRow = { state: "not_started" | "in_progress" | "completed"; xp_earned: number; completed_at: string | null };
 
 const DAY_MS = 86_400_000;
 const dayKey = (date = new Date()) => date.toISOString().slice(0, 10);
 
-function minuteCount(duration: string) { const count = Number.parseInt(duration, 10); return Number.isFinite(count) ? count : 12; }
+/**
+ * Minutes from a duration written for a Learner: "16 min", "45m", "1h 20m".
+ *
+ * The fallback is explicit at each call site because it stands for a different
+ * thing in each: an unreadable Lesson duration and an unreadable Project
+ * duration are not the same guess. Storage requires a positive number either
+ * way.
+ */
+function durationMinutes(duration: string, fallbackMinutes: number) {
+  const hours = Number(duration.match(/(\d+)\s*h/)?.[1] ?? 0);
+  const minutes = Number(duration.match(/(\d+)\s*m/)?.[1] ?? 0);
+  const total = hours * 60 + minutes;
+  return total > 0 ? total : fallbackMinutes;
+}
 
 function lessonSeed(track: typeof CURRICULUM[number], lesson: LessonDefinition, trackId: string) {
-  return { track_id: trackId, slug: lesson.id, title: lesson.title, description: lesson.description, difficulty: lesson.difficulty, sort_order: lesson.order, duration_minutes: minuteCount(lesson.duration), xp_reward: lesson.xp, theory_markdown: lesson.theory, example_code: { code: lesson.example }, is_published: true };
+  return { track_id: trackId, slug: lesson.id, title: lesson.title, description: lesson.description, difficulty: lesson.difficulty, sort_order: lesson.order, duration_minutes: durationMinutes(lesson.duration, 12), xp_reward: lesson.xp, theory_markdown: lesson.theory, example_code: { code: lesson.example }, is_published: true };
 }
 
 export async function ensureSupabaseCurriculum() {
@@ -30,7 +44,12 @@ export async function ensureSupabaseCurriculum() {
   const challenges = CURRICULUM.flatMap(track => track.lessons.map(lesson => { const stored = lessonMap.get(`${trackMap.get(track.id)!.id}:${lesson.id}`)!; return { lesson_id: stored.id, prompt: lesson.challenge.prompt, required_fragments: lesson.challenge.required, hint_nudge: lesson.challenge.hint, hint_detail: "Work through the required elements one at a time, then compare the structure with the guided example.", reference_solution: { code: lesson.example } }; }));
   await supabaseAdminRequest("/rest/v1/challenges?on_conflict=lesson_id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(challenges) });
   await supabaseAdminRequest("/rest/v1/awards?on_conflict=slug", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(AWARD_CATALOG.map(award => ({ slug: award.slug, name: award.name, description: award.description, icon_key: award.iconKey }))) });
-  return { tracks: trackMap, lessons: storedLessons };
+  // Projects are seeded for the same reason Lessons are: a Project Completion
+  // records which Project it was, and cannot reference a row that never existed.
+  const projectPayload = PROJECTS.map(project => ({ slug: project.id, title: project.title, description: project.description, track_id: trackMap.get(project.track.toLowerCase())?.id ?? null, difficulty: project.difficulty, duration_minutes: durationMinutes(project.duration, 60), is_published: true }));
+  await supabaseAdminRequest("/rest/v1/projects?on_conflict=slug", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(projectPayload) });
+  const storedProjects = await supabaseAdminRequest<ProjectRow[]>("/rest/v1/projects?select=id,slug");
+  return { tracks: trackMap, lessons: storedLessons, projects: storedProjects };
 }
 
 /**
@@ -59,7 +78,7 @@ async function ensureTodayTask() {
   const selected = allLessons[index];
   const storedTrack = tracks.get(selected.track.id)!;
   const storedLesson = lessons.find(item => item.track_id === storedTrack.id && item.slug === selected.lesson.id)!;
-  const payload = { task_date: today, title: `Today: ${selected.lesson.title}`, description: selected.lesson.objective, track_id: storedTrack.id, lesson_id: storedLesson.id, difficulty: selected.lesson.difficulty, xp_reward: Math.max(25, Math.round(selected.lesson.xp / 2)), estimated_minutes: Math.min(20, minuteCount(selected.lesson.duration)), task_content: { prompt: selected.lesson.challenge.prompt, required: selected.lesson.challenge.required, hint: selected.lesson.challenge.hint, lesson_slug: selected.lesson.id, track_slug: selected.track.id }, required_plan_code: selected.lesson.order > 1 ? "full-access-one-time" : null, published_at: new Date().toISOString() };
+  const payload = { task_date: today, title: `Today: ${selected.lesson.title}`, description: selected.lesson.objective, track_id: storedTrack.id, lesson_id: storedLesson.id, difficulty: selected.lesson.difficulty, xp_reward: Math.max(25, Math.round(selected.lesson.xp / 2)), estimated_minutes: Math.min(20, durationMinutes(selected.lesson.duration, 12)), task_content: { prompt: selected.lesson.challenge.prompt, required: selected.lesson.challenge.required, hint: selected.lesson.challenge.hint, lesson_slug: selected.lesson.id, track_slug: selected.track.id }, required_plan_code: selected.lesson.order > 1 ? "full-access-one-time" : null, published_at: new Date().toISOString() };
   const created = await supabaseAdminRequest<DailyTaskRow[]>("/rest/v1/daily_tasks", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(payload) });
   return created[0];
 }
@@ -112,18 +131,18 @@ async function recordEarnedAward(learnerId: string, slug: string) {
 
 async function getAwardSnapshot(learnerId: string): Promise<AwardMetricSnapshot> {
   const { lessons } = await ensureSupabaseCurriculum();
-  const [profiles, progress, passedChallenges, dailyCompletions, projectActivity, beginnerModuleActivity] = await Promise.all([
+  const [profiles, progress, passedChallenges, dailyCompletions, projectCompletions, beginnerModuleActivity] = await Promise.all([
     supabaseAdminRequest<ProfileRow[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=id,xp,current_streak,longest_streak,last_learning_at&limit=1`),
     supabaseAdminRequest<Array<{ lesson_id: string }>>(`/rest/v1/lesson_progress?user_id=eq.${encodeURIComponent(learnerId)}&state=eq.completed&select=lesson_id`),
     supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/challenge_attempts?user_id=eq.${encodeURIComponent(learnerId)}&passed=eq.true&select=id`),
     supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/daily_task_completions?user_id=eq.${encodeURIComponent(learnerId)}&state=eq.completed&select=id`),
-    supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/activity_events?user_id=eq.${encodeURIComponent(learnerId)}&event_type=eq.project&select=id`),
+    supabaseAdminRequest<Array<{ project_id: string }>>(`/rest/v1/project_progress?user_id=eq.${encodeURIComponent(learnerId)}&completed_at=not.is.null&select=project_id`),
     supabaseAdminRequest<Array<{ id: string; metadata: { module?: string; mission_id?: string } }>>(`/rest/v1/activity_events?user_id=eq.${encodeURIComponent(learnerId)}&event_type=eq.beginner_module&select=id,metadata`),
   ]);
   const lessonById = new Map(lessons.map(lesson => [lesson.id, lesson.slug]));
   const profile = profiles[0] ?? { xp: 0, current_streak: 0 };
   const uniqueBeginnerMissions = new Set(beginnerModuleActivity.filter(item => item.metadata?.module === "beginner-build").map(item => item.metadata?.mission_id).filter((missionId): missionId is string => Boolean(missionId)));
-  return { xp: profile.xp, currentStreak: profile.current_streak, completedLessonSlugs: progress.map(item => lessonById.get(item.lesson_id)).filter((slug): slug is string => Boolean(slug)), passedChallengeCount: passedChallenges.length, completedDailyCount: dailyCompletions.length, completedProjectCount: projectActivity.length, completedBeginnerBuildMissionCount: uniqueBeginnerMissions.size };
+  return { xp: profile.xp, currentStreak: profile.current_streak, completedLessonSlugs: progress.map(item => lessonById.get(item.lesson_id)).filter((slug): slug is string => Boolean(slug)), passedChallengeCount: passedChallenges.length, completedDailyCount: dailyCompletions.length, completedProjectCount: projectCompletions.length, completedBeginnerBuildMissionCount: uniqueBeginnerMissions.size };
 }
 
 async function reconcileVerifiedAwards(learnerId: string, providedSnapshot?: AwardMetricSnapshot) {
@@ -215,6 +234,15 @@ export async function recordSupabaseChallengeAttempt(learnerId: string, input: {
 
 export async function recordSupabaseProjectCompletion(learnerId: string, input: { projectId: string; title: string }) {
   const awardedXp = 100;
+  const { projects } = await ensureSupabaseCurriculum();
+  const project = projects.find(row => row.slug === input.projectId);
+  if (!project) throw new Error("This project is not available.");
+  // The Completion record, unique per Learner per Project, is the evidence the
+  // Builder award reads. The Activity Feed entry below is presentational only
+  // (ADR 0003) and nothing is ever counted from it.
+  // Ignore rather than merge: a second completion must not overwrite the date
+  // the Learner first finished this Project. That date is the Completion.
+  await supabaseAdminRequest("/rest/v1/project_progress?on_conflict=user_id,project_id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates" }, body: JSON.stringify({ user_id: learnerId, project_id: project.id, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
   await addXp(learnerId, awardedXp);
   await addActivity(learnerId, "project", "Project completed", `Completed the ${input.title} project.`, { project_slug: input.projectId });
   const newAwards = await reconcileVerifiedAwards(learnerId);

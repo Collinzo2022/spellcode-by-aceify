@@ -1,0 +1,19 @@
+-- SpellCode by Aceify: reverse of supabase_project_completion_backfill_migration.sql.
+--
+-- There is deliberately nothing to run.
+--
+-- The backfill only inserted rows into public.project_progress, a table the
+-- pre-ticket-06 application never reads: it counted Project completions out of
+-- the Activity Feed instead, and the Feed was left untouched. So rolling the
+-- application back needs no schema or data change - the old build simply ignores
+-- the rows.
+--
+-- Deleting them would be destructive for no gain. After a roll-forward they are
+-- the evidence the Builder award reads from, and a Learner who completed a
+-- Project between the two deploys would have a genuine Completion deleted along
+-- with the backfilled ones - the two are indistinguishable by design, because
+-- they record the same fact.
+--
+-- If a Learner's rows must be removed for an unrelated reason, do it by
+-- Learner rather than in bulk, and know that it revokes evidence:
+--   delete from public.project_progress where user_id = '<learner id>';

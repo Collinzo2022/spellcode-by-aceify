@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import { CURRICULUM } from "../../shared/curriculum";
+import { CURRICULUM, PROJECTS } from "../../shared/curriculum";
 
 /**
  * Test double for the single Supabase REST choke point.
@@ -10,17 +10,17 @@ import { CURRICULUM } from "../../shared/curriculum";
  * staged rows. Tests stage rows by path and assert on what a learner observes.
  */
 
-export type RecordedWrite = { path: string; method: string; body: unknown };
+export type RecordedWrite = { path: string; method: string; body: unknown; prefer: string };
 
 type StagedRead = { match: RegExp; rows: unknown };
 
 /**
- * Track and lesson rows derived from the real curriculum.
+ * Track, lesson and project rows derived from the real curriculum.
  *
  * The learning service resolves curriculum rows with non-null assertions, so a
  * stub that returned an empty table would throw rather than fail an assertion.
- * Deriving the rows from `CURRICULUM` keeps them in step with the source of
- * truth automatically.
+ * Deriving the rows from `CURRICULUM` and `PROJECTS` keeps them in step with the
+ * source of truth automatically.
  */
 function curriculumRows() {
   const tracks = CURRICULUM.map((track, index) => ({
@@ -44,7 +44,20 @@ function curriculumRows() {
       example_code: { code: lesson.example },
     })),
   );
-  return { tracks, lessons };
+  // Only what the service reads back: a Completion needs the Project's id.
+  const projects = PROJECTS.map(project => ({ id: `project-${project.id}`, slug: project.id }));
+  return { tracks, lessons, projects };
+}
+
+/**
+ * Whether a request path addresses exactly this table.
+ *
+ * The query string is part of the match, so one table name can never swallow
+ * another that merely starts with it - `projects` and `project_progress` are
+ * different tables and a stub that confused them would answer the wrong rows.
+ */
+function tableIs(path: string, table: string) {
+  return path.startsWith(`/rest/v1/${table}?`);
 }
 
 function prefersRepresentation(init: RequestInit) {
@@ -53,7 +66,7 @@ function prefersRepresentation(init: RequestInit) {
 }
 
 export function createSupabaseStub(learnerId: string) {
-  const { tracks, lessons } = curriculumRows();
+  const { tracks, lessons, projects } = curriculumRows();
   const staged: StagedRead[] = [];
   const writes: RecordedWrite[] = [];
 
@@ -62,7 +75,7 @@ export function createSupabaseStub(learnerId: string) {
 
     if (method !== "GET") {
       const body = init.body ? JSON.parse(String(init.body)) : undefined;
-      writes.push({ path, method, body });
+      writes.push({ path, method, body, prefer: new Headers(init.headers).get("Prefer") ?? "" });
       // PostgREST echoes the written rows back only when asked to. Production
       // code branches on that response, so the stub must honour it.
       if (!prefersRepresentation(init)) return [];
@@ -73,8 +86,9 @@ export function createSupabaseStub(learnerId: string) {
     if (match) return match.rows;
 
     // Curriculum is seeded on demand by the service and must resolve.
-    if (path.startsWith("/rest/v1/tracks")) return tracks;
-    if (path.startsWith("/rest/v1/lessons")) return lessons;
+    if (tableIs(path, "tracks")) return tracks;
+    if (tableIs(path, "lessons")) return lessons;
+    if (tableIs(path, "projects")) return projects;
 
     // Every other table is empty unless a test stages it.
     return [];
@@ -83,6 +97,7 @@ export function createSupabaseStub(learnerId: string) {
   return {
     request,
     lessons,
+    projects,
 
     /** Stage rows to be returned by reads whose path matches. Latest wins. */
     stageRows(match: RegExp, rows: unknown) {
