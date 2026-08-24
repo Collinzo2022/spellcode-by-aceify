@@ -1,6 +1,6 @@
 import { learnerIdOf } from "./learner";
 import type { Express, Request, Response } from "express";
-import { completeDailyLearningTask, getDailyLearningOverview, getVerifiedEntitlements } from "./supabaseLearning";
+import { completeDailyLearningTask, getDailyLearningOverview, verifyFullAccess } from "./supabaseLearning";
 import { getSupabaseSessionUser } from "./supabase";
 import { supabaseAdminRequest } from "./supabase";
 import { CURRICULUM } from "../shared/curriculum";
@@ -21,14 +21,14 @@ export function registerMobileRoutes(app: Express) {
   app.get("/api/mobile/access", async (req: Request, res: Response) => {
     const user = await mobileUser(req);
     if (!user) return res.status(401).json({ error: "Authentication required" });
-    try { return res.json(await getVerifiedEntitlements(learnerIdOf(user))); } catch (error) { return res.status(500).json({ error: error instanceof Error ? error.message : "Unable to load access" }); }
+    try { return res.json(await verifyFullAccess(learnerIdOf(user))); } catch (error) { return res.status(500).json({ error: error instanceof Error ? error.message : "Unable to load access" }); }
   });
   app.get("/api/mobile/profile", async (req: Request, res: Response) => {
     const user = await mobileUser(req);
     if (!user) return res.status(401).json({ error: "Authentication required" });
     try {
-      const [daily, access] = await Promise.all([getDailyLearningOverview(learnerIdOf(user)), getVerifiedEntitlements(learnerIdOf(user))]);
-      return res.json({ name: user.name, email: user.email, xp: daily.profile.xp, streak: daily.profile.current_streak, entitlements: access.features, hasFullAccess: access.hasFullAccess });
+      const [daily, access] = await Promise.all([getDailyLearningOverview(learnerIdOf(user)), verifyFullAccess(learnerIdOf(user))]);
+      return res.json({ name: user.name, email: user.email, xp: daily.profile.xp, streak: daily.profile.current_streak, hasFullAccess: access.hasFullAccess });
     } catch (error) { return res.status(500).json({ error: error instanceof Error ? error.message : "Unable to load profile" }); }
   });
   app.post("/api/mobile/lesson/complete", async (req: Request, res: Response) => {
@@ -37,7 +37,7 @@ export function registerMobileRoutes(app: Express) {
     if (!user) return res.status(401).json({ error: "Authentication required" });
     const lesson = CURRICULUM.flatMap(track => track.lessons).find(item => item.id === lessonSlug);
     if (!lesson) return res.status(404).json({ error: "Lesson not found" });
-    if (lesson.order > 1 && !(await getVerifiedEntitlements(learnerIdOf(user))).hasFullAccess) return res.status(403).json({ error: "This lesson is part of Full Access" });
+    if (lesson.order > 1 && !(await verifyFullAccess(learnerIdOf(user))).hasFullAccess) return res.status(403).json({ error: "This lesson is part of Full Access" });
     try {
       const stored = await supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/lessons?slug=eq.${encodeURIComponent(lessonSlug)}&select=id&limit=1`);
       const storedLesson = stored[0];

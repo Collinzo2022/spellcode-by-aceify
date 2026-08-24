@@ -33,13 +33,20 @@ export async function ensureSupabaseCurriculum() {
   return { tracks: trackMap, lessons: storedLessons };
 }
 
-export async function getVerifiedEntitlements(learnerId: string) {
+/**
+ * Whether a Learner holds Full Access, verified against their subscriptions.
+ *
+ * Full Access is a single gate (ADR 0001): the answer is one boolean, and no
+ * attribute of a Plan narrows it. The Plans are still read, because a
+ * subscription naming a Plan that no longer exists grants nothing.
+ */
+export async function verifyFullAccess(learnerId: string) {
   const subscriptions = await supabaseAdminRequest<Array<{ plan_id: string; status: string; current_period_end: string | null }>>(`/rest/v1/subscriptions?user_id=eq.${encodeURIComponent(learnerId)}&status=eq.active&select=plan_id,status,current_period_end`);
   const now = Date.now();
   const activePlans = subscriptions.filter(subscription => !subscription.current_period_end || new Date(subscription.current_period_end).getTime() >= now).map(subscription => subscription.plan_id);
-  if (activePlans.length === 0) return { hasFullAccess: false, features: [] as string[] };
-  const plans = await supabaseAdminRequest<Array<{ id: string; paid_features: string[] }>>(`/rest/v1/plans?id=in.(${activePlans.join(",")})&select=id,paid_features`);
-  return { hasFullAccess: plans.length > 0, features: Array.from(new Set(plans.flatMap(plan => plan.paid_features ?? []))) };
+  if (activePlans.length === 0) return { hasFullAccess: false };
+  const plans = await supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/plans?id=in.(${activePlans.join(",")})&select=id`);
+  return { hasFullAccess: plans.length > 0 };
 }
 
 async function ensureTodayTask() {
@@ -59,10 +66,10 @@ async function ensureTodayTask() {
 
 export async function getDailyLearningOverview(learnerId: string) {
   const task = await ensureTodayTask();
-  const entitlement = await getVerifiedEntitlements(learnerId);
+  const access = await verifyFullAccess(learnerId);
   const completion = await supabaseAdminRequest<CompletionRow[]>(`/rest/v1/daily_task_completions?user_id=eq.${encodeURIComponent(learnerId)}&daily_task_id=eq.${task.id}&select=state,xp_earned,completed_at`);
   const profile = await supabaseAdminRequest<ProfileRow[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=id,xp,current_streak,longest_streak,last_learning_at`);
-  return { task, completion: completion[0] ?? { state: "not_started", xp_earned: 0, completed_at: null }, profile: profile[0] ?? { id: learnerId, xp: 0, current_streak: 0, longest_streak: 0, last_learning_at: null }, hasPaidAccess: entitlement.hasFullAccess, entitlements: entitlement.features, locked: Boolean(task.required_plan_code && !entitlement.hasFullAccess) };
+  return { task, completion: completion[0] ?? { state: "not_started", xp_earned: 0, completed_at: null }, profile: profile[0] ?? { id: learnerId, xp: 0, current_streak: 0, longest_streak: 0, last_learning_at: null }, hasPaidAccess: access.hasFullAccess, locked: Boolean(task.required_plan_code && !access.hasFullAccess) };
 }
 
 export async function completeDailyLearningTask(learnerId: string, input: { score: number; submittedCode?: { html?: string; css?: string; javascript?: string } }) {

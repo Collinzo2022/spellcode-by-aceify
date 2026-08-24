@@ -37,7 +37,7 @@ Never treat a browser redirect as proof of payment. Store the `reference` genera
 |---|---|
 | Monetization model | Free tier plus monthly and annual Pro subscription, or one-time cohort/course purchase. |
 | Currency and country | For example, NGN for Nigeria or GHS for Ghana. |
-| Paid entitlement | All lessons, project publishing, certificates, AI tutor limits, or a combination. |
+| Paid access | A single Full Access gate covering all lessons, project publishing, certificates, and the AI tutor together. Settled in ADR 0001; there are no per-feature tiers. |
 | Plans | Display name, Paystack plan code, interval, amount, and trial policy. |
 | Refund / access policy | Whether a refund immediately revokes paid access or lets it run until period end. |
 | Admin workflow | Who can publish lessons, create plans, and view payment records. |

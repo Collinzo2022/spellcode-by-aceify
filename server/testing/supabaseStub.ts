@@ -94,15 +94,18 @@ export function createSupabaseStub(learnerId: string) {
      *
      * The staged paths deliberately include the learner and the active-status
      * filter, so a query that dropped either would miss this stub and correctly
-     * fail to find an entitlement.
+     * fail to find Full Access.
+     *
+     * The Plan is nameable because the three Plans sold grant identical access
+     * (ADR 0001) and a test should be able to prove it. A staged Plan row
+     * carries nothing but its id: no attribute of a Plan decides access.
      */
-    grantFullAccess() {
+    grantFullAccess(planId = "plan-1") {
       staged.unshift({
         match: new RegExp(`^/rest/v1/subscriptions\\?user_id=eq\\.${learnerId}&status=eq\\.active`),
-        rows: [{ plan_id: "plan-1", status: "active", current_period_end: null }],
+        rows: [{ plan_id: planId, status: "active", current_period_end: null }],
       });
-      // Full Access is a single gate (ADR 0001); plan features carry no meaning.
-      staged.unshift({ match: /^\/rest\/v1\/plans\?id=in\.\(plan-1\)/, rows: [{ id: "plan-1", paid_features: [] }] });
+      staged.unshift({ match: new RegExp(`^/rest/v1/plans\\?id=in\\.\\(${planId}\\)`), rows: [{ id: planId }] });
     },
 
     /** Writes recorded against a table, in the order they were issued. */

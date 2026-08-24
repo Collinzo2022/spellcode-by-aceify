@@ -1,9 +1,9 @@
 import { learnerIdOf } from "../learner";
 import { protectedProcedure, router } from "../_core/trpc";
 import { supabaseAdminRequest } from "../supabase";
-import { getVerifiedEntitlements } from "../supabaseLearning";
+import { verifyFullAccess } from "../supabaseLearning";
 import { storagePut } from "../storage";
-import { canIssueCertificate } from "../../shared/entitlements";
+import { canIssueCertificate } from "../../shared/fullAccess";
 
 function escapeHtml(value: string) { return value.replace(/[&<>'"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character); }
 
@@ -18,7 +18,7 @@ async function certificateProgress(userId: string) {
 export const certificatesRouter = router({
   status: protectedProcedure.query(async ({ ctx }) => {
     const learnerId = learnerIdOf(ctx.user);
-    const access = await getVerifiedEntitlements(learnerId);
+    const access = await verifyFullAccess(learnerId);
     if (!access.hasFullAccess) return { hasFullAccess: false, eligible: false, completedLessons: 0, totalLessons: 0, certificate: null };
     const progress = await certificateProgress(learnerId);
     const records = await supabaseAdminRequest<Array<{ download_url: string; issued_at: string }>>(`/rest/v1/certificates?user_id=eq.${encodeURIComponent(learnerId)}&select=download_url,issued_at&limit=1`);
@@ -26,7 +26,7 @@ export const certificatesRouter = router({
   }),
   issue: protectedProcedure.mutation(async ({ ctx }) => {
     const learnerId = learnerIdOf(ctx.user);
-    const access = await getVerifiedEntitlements(learnerId);
+    const access = await verifyFullAccess(learnerId);
     if (!access.hasFullAccess) throw new Error("Certificates are available with Full Access.");
     const progress = await certificateProgress(learnerId);
     if (!canIssueCertificate(access.hasFullAccess, progress.completedLessons, progress.totalLessons)) throw new Error(`Complete all ${progress.totalLessons} lessons before issuing your certificate.`);

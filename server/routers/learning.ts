@@ -2,8 +2,8 @@ import { learnerIdOf } from "../learner";
 import { CURRICULUM, PROJECTS } from "@shared/curriculum";
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
-import { completeBeginnerBuildMission, completeDailyLearningTask, completeSupabaseLesson, enrollSupabaseTrack, getDailyLearningOverview, getSupabaseLearnerDashboard, getVerifiedEntitlements, recordSupabaseChallengeAttempt, recordSupabaseProjectCompletion } from "../supabaseLearning";
-import { lessonRequiresFullAccess } from "../../shared/entitlements";
+import { completeBeginnerBuildMission, completeDailyLearningTask, completeSupabaseLesson, enrollSupabaseTrack, getDailyLearningOverview, getSupabaseLearnerDashboard, verifyFullAccess, recordSupabaseChallengeAttempt, recordSupabaseProjectCompletion } from "../supabaseLearning";
+import { lessonRequiresFullAccess } from "../../shared/fullAccess";
 
 const lessonInput = z.object({
   lessonId: z.string().min(1).max(80),
@@ -15,8 +15,8 @@ const lessonInput = z.object({
 async function requireLessonAccess(userId: string, lessonId: string) {
   const lesson = CURRICULUM.flatMap(track => track.lessons).find(item => item.id === lessonId);
   if (!lesson || !lessonRequiresFullAccess(lesson.order)) return;
-  const entitlement = await getVerifiedEntitlements(userId);
-  if (!entitlement.hasFullAccess) throw new Error("This lesson is part of Full Access. Choose a plan to continue.");
+  const access = await verifyFullAccess(userId);
+  if (!access.hasFullAccess) throw new Error("This lesson is part of Full Access. Choose a plan to continue.");
 }
 
 export const learningRouter = router({

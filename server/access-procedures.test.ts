@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSupabaseStub } from "./testing/supabaseStub";
 import { makeSessionUser } from "./learner";
+import { expectNoFeatureArray } from "./testing/assertions";
 
 const { supabase, storagePut, invokeLLM } = vi.hoisted(() => ({
   supabase: { current: null as ReturnType<typeof import("./testing/supabaseStub").createSupabaseStub> | null },
@@ -16,6 +17,7 @@ import { learningRouter } from "./routers/learning";
 import { projectsRouter } from "./routers/projects";
 import { tutorRouter } from "./routers/tutor";
 import { certificatesRouter } from "./routers/certificates";
+import { billingRouter } from "./routers/billing";
 
 const LEARNER_ID = "learner-1";
 const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: {}, res: {} } as any;
@@ -65,7 +67,7 @@ describe("the learner dashboard", () => {
   });
 });
 
-describe("Full Access enforcement without an entitlement", () => {
+describe("Full Access enforcement for a Learner without it", () => {
   it("rejects advanced lesson completion", async () => {
     await expect(learningRouter.createCaller(ctx).completeLesson({ lessonId: "css-flex-layout", track: "CSS", difficulty: "Intermediate", xp: 40 })).rejects.toThrow("Full Access");
     expect(stub.writesTo("lesson_progress")).toHaveLength(0);
@@ -91,7 +93,7 @@ describe("Full Access enforcement without an entitlement", () => {
   });
 });
 
-describe("Full Access enforcement with a verified entitlement", () => {
+describe("Full Access enforcement for a Learner who holds it", () => {
   beforeEach(() => stub.grantFullAccess());
 
   it("allows advanced lesson completion and records it", async () => {
@@ -146,5 +148,83 @@ describe("Full Access enforcement with a verified entitlement", () => {
 
     await expect(certificatesRouter.createCaller(ctx).issue()).resolves.toEqual({ url: "https://example.test/original", alreadyIssued: true });
     expect(stub.writesTo("certificates")).toHaveLength(0);
+  });
+});
+
+/**
+ * ADR 0001: Full Access is a single gate, not a set of entitlements.
+ *
+ * These tests guard the two halves of that decision. The gates must agree with
+ * each other whichever Plan a Learner holds, and no response may carry a
+ * features array - an unenforced permission set on the wire is the exact thing
+ * a future contributor could mistake for a real check.
+ */
+describe("Full Access as a single gate", () => {
+  const PLAN_IDS = ["full-access-one-time", "full-access-3-month", "full-access-6-month"];
+  const ALL_OPEN = { advancedLesson: true, projectPublishing: true, aiTutor: true, certificates: true };
+
+  /**
+   * Drive all four gates and report which opened.
+   *
+   * A gate counts as closed only when it refuses for lack of Full Access. Any
+   * other rejection - a missing stub, a renamed table - is rethrown, so a
+   * broken test cannot masquerade as an enforced gate.
+   */
+  async function gateOutcomes() {
+    storagePut.mockResolvedValue({ key: `certificates/${LEARNER_ID}/SC-TEST.html`, url: "https://example.test/artifact" });
+    invokeLLM.mockResolvedValue({ choices: [{ message: { content: "CSS lays out the page." } }] });
+    // Issuance is the certificate gate; eligibility is a separate rule, so stage
+    // a complete path and leave Full Access as the only thing being measured.
+    stub.stageRows(COMPLETED_LESSONS, stub.lessons.map(lesson => ({ lesson_id: lesson.id })));
+    const opens = (result: Promise<unknown>) => result.then(() => true, (error: unknown) => { if (error instanceof Error && error.message.includes("Full Access")) return false; throw error; });
+    return {
+      advancedLesson: await opens(learningRouter.createCaller(ctx).completeLesson({ lessonId: "css-flex-layout", track: "CSS", difficulty: "Intermediate", xp: 40 })),
+      projectPublishing: await opens(projectsRouter.createCaller(ctx).publish({ projectSlug: "landing-page", title: "Landing page", html: "<main />", css: "", javascript: "" })),
+      aiTutor: await opens(tutorRouter.createCaller(ctx).ask({ messages: [{ role: "user", content: "Explain CSS" }] })),
+      certificates: await opens(certificatesRouter.createCaller(ctx).issue()),
+    };
+  }
+
+  it("opens every gate for a learner on any plan, and the same gates on each", async () => {
+    const outcomes: Array<Awaited<ReturnType<typeof gateOutcomes>>> = [];
+
+    for (const planId of PLAN_IDS) {
+      stub = createSupabaseStub(LEARNER_ID);
+      supabase.current = stub;
+      stub.grantFullAccess(planId);
+      outcomes.push(await gateOutcomes());
+    }
+
+    expect(outcomes).toEqual([ALL_OPEN, ALL_OPEN, ALL_OPEN]);
+  });
+
+  it("closes every gate for a learner on no plan", async () => {
+    expect(await gateOutcomes()).toEqual({ advancedLesson: false, projectPublishing: false, aiTutor: false, certificates: false });
+  });
+
+  it("answers the access query with the gate alone", async () => {
+    await expect(billingRouter.createCaller(ctx).myAccess()).resolves.toEqual({ hasFullAccess: false });
+
+    stub.grantFullAccess();
+
+    await expect(billingRouter.createCaller(ctx).myAccess()).resolves.toEqual({ hasFullAccess: true });
+  });
+
+  it("carries no features array in the daily overview", async () => {
+    stub.grantFullAccess();
+
+    const overview = await learningRouter.createCaller(ctx).dailyOverview();
+
+    expectNoFeatureArray(overview);
+    expect(overview.hasPaidAccess).toBe(true);
+  });
+
+  it("offers no plan a feature list to be gated on", async () => {
+    stub.stageRows(/^\/rest\/v1\/plans\?select=/, [{ id: "plan-1", code: "full-access-one-time", name: "Full Access", currency: "NGN", amount_minor: 12000000, interval: "one_time", max_installments: 1, paystack_plan_code: null, is_active: true }]);
+
+    const [plan] = await billingRouter.createCaller(ctx).accessOptions();
+
+    expect(plan).not.toHaveProperty("paid_features");
+    expect(stub.request.mock.calls.every(([path]) => !String(path).includes("paid_features"))).toBe(true);
   });
 });

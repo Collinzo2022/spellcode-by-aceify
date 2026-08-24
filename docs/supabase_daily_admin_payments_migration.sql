@@ -1,9 +1,12 @@
 -- SpellCode by Aceify: daily-learning, installment, and administrator extension.
 -- Run this in Supabase SQL Editor after supabase_schema_draft.sql.
 
+-- A Plan carries no feature list. Full Access is a single gate (ADR 0001), so a
+-- Plan differs from another only in payment schedule. This file once added a
+-- `paid_features` column here; environments that ran that version drop it with
+-- supabase_full_access_single_gate_migration.sql.
 alter table public.plans
   add column if not exists max_installments smallint,
-  add column if not exists paid_features jsonb not null default '[]'::jsonb,
   add constraint plans_max_installments_check check (max_installments is null or max_installments > 0);
 
 alter table public.subscriptions
@@ -45,18 +48,18 @@ create table if not exists public.daily_task_completions (
 create index if not exists daily_tasks_date_idx on public.daily_tasks(task_date desc);
 create index if not exists daily_task_completions_user_idx on public.daily_task_completions(user_id, completed_at desc);
 
-insert into public.plans (code, name, currency, amount_minor, interval, max_installments, paid_features, is_active)
+-- The three Plans grant identical access and differ only in payment schedule.
+insert into public.plans (code, name, currency, amount_minor, interval, max_installments, is_active)
 values
-  ('full-access-one-time', 'Full Access (One-time)', 'NGN', 12000000, 'one_time', 1, '["all_lessons_past_level_1", "project_publishing", "certificate", "unlimited_ai_tutor"]'::jsonb, false),
-  ('full-access-3-month', 'Full Access (3-Month Installment)', 'NGN', 4000000, 'monthly', 3, '["all_lessons_past_level_1", "project_publishing", "certificate", "unlimited_ai_tutor"]'::jsonb, false),
-  ('full-access-6-month', 'Full Access (6-Month Installment)', 'NGN', 2000000, 'monthly', 6, '["all_lessons_past_level_1", "project_publishing", "certificate", "unlimited_ai_tutor"]'::jsonb, false)
+  ('full-access-one-time', 'Full Access (One-time)', 'NGN', 12000000, 'one_time', 1, false),
+  ('full-access-3-month', 'Full Access (3-Month Installment)', 'NGN', 4000000, 'monthly', 3, false),
+  ('full-access-6-month', 'Full Access (6-Month Installment)', 'NGN', 2000000, 'monthly', 6, false)
 on conflict (code) do update set
   name = excluded.name,
   currency = excluded.currency,
   amount_minor = excluded.amount_minor,
   interval = excluded.interval,
   max_installments = excluded.max_installments,
-  paid_features = excluded.paid_features,
   updated_at = now();
 
 -- Once Paystack plan codes are created, set them and then activate the applicable plan.

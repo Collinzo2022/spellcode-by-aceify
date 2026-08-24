@@ -12,19 +12,23 @@ Run the committed SQL files in the Supabase SQL Editor in this order when initia
 
 The backend also provisions a missing profile idempotently on an authenticated request, protecting existing users created before the trigger was installed. This fallback does not replace the database trigger; the trigger is the normal sign-up path.
 
-A **new environment initialized from `supabase_schema_draft.sql` already has the current object names and must not run `supabase_award_rename_migration.sql`.** That migration exists only to bring an environment created before the rename into line.
+A **new environment initialized from the replay order above already matches the current application and must run neither `supabase_award_rename_migration.sql` nor `supabase_full_access_single_gate_migration.sql`.** Both exist only to bring an environment created before those changes into line.
 
-### Migrations that must be run before the application is deployed
+### Migrations whose order against the deploy matters
+
+The two committed migrations below run on opposite sides of the deploy. Read which before running either.
 
 `supabase_award_rename_migration.sql` renames the recognition tables to `awards` and `user_awards`. The application queries the new names, so the order is: **run the migration first, then deploy.**
 
 Getting it backwards fails loudly rather than silently. The server-side Supabase helper throws on any non-2xx response and PostgREST answers an unknown table with 404, so a build pointed at the wrong schema errors on its award reads instead of quietly reporting zero Earned Awards. No Learner loses recognition in either direction — the mismatch window is an outage, not data loss, and should be kept short. `supabase_award_rename_rollback.sql` reverses the migration and must be paired with rolling the application back.
 
+`supabase_full_access_single_gate_migration.sql` drops `plans.paid_features`, the per-feature column no gate ever consulted (ADR 0001). The order is the reverse: **deploy first, then run the migration.** The old build selects that column on every entitlement check, so dropping it first closes every gate for every Learner who paid, and breaks the plan list on the access page — PostgREST answers a select naming an unknown column with 400. Deploy first and there is no window at all, because the new build never names the column. `supabase_full_access_single_gate_rollback.sql` restores the column and the seeded values, and must run *before* rolling the application back.
+
 | Concern | Authoritative component |
 |---|---|
 | Identity and sessions | Supabase Auth bearer tokens |
 | Learner profile, XP, streak, progress, activity, awards | Supabase Postgres |
-| Billing, Paystack verification, entitlements | Supabase Postgres plus Paystack webhooks |
+| Billing, Paystack verification, Full Access | Supabase Postgres plus Paystack webhooks |
 | Published projects and certificate artifacts | Managed storage plus Supabase metadata |
 | Web frontend | Vite/React static output |
 | API, tRPC, mobile routes, Paystack webhook | Stable Manus-hosted Express backend |
