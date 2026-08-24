@@ -33,6 +33,24 @@ Getting it backwards fails loudly rather than silently. The server-side Supabase
 | Web frontend | Vite/React static output |
 | API, tRPC, mobile routes, Paystack webhook | Stable Manus-hosted Express backend |
 
+## Learner local time
+
+CONTEXT.md defines the **Local Day** and why the server is told it rather than guessing. This is the wire contract that carries it.
+
+| | |
+|---|---|
+| Header | `x-utc-offset-minutes` |
+| Value | Whole minutes **east** of UTC, so UTC+1 is `60` and UTC-5 is `-300`. In JavaScript that is `-new Date().getTimezoneOffset()`, whose sign is the opposite convention. |
+| Range | `-720` (UTC-12:00) to `840` (UTC+14:00) inclusive. Offsets that are not whole hours, such as `345`, are valid. |
+| Absent | Treated as UTC. A missing offset never fails a request, so an older client keeps working. |
+| Malformed | Rejected with `400`. A present but unparseable value can only come from a broken client, and reading it as UTC would hand that Learner a Streak that rolls over at the wrong hour. |
+
+Send it on every request rather than only those that record a completion or read a Streak; that way no future caller has to remember it. Read it per request, not once at startup, so a long session stays correct across a daylight saving change or a flight.
+
+**Both clients must ship this.** The web application sends it from `client/src/main.tsx`. The Android companion is a separate codebase and is **not yet updated** — until it is, its Learners fall back to UTC and can see subtly different Streaks from identical behaviour.
+
+Known and accepted: a numeric offset is client-supplied and therefore spoofable, and it does not survive a daylight saving transition that falls mid-day. The exit, should either matter, is to send a zone identifier and resolve the local day server-side — a change of contract, not a redesign.
+
 ## Vercel deployment contract
 
 Vercel builds the Vite client into `dist/public` with `pnpm vite build`. The root `vercel.json` declares that directory as the deployment output and preserves SPA navigation by rewriting non-API routes to `index.html`.

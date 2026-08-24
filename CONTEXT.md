@@ -69,10 +69,16 @@ A Learner's XP total is the sum of their XP Entries and is always recomputable f
 **XP Entry** — the record of one XP award: how much, to whom, and which single Completion caused
 it. The system of record for XP. See ADR 0002.
 
-**Streak** — the number of consecutive days, ending today or yesterday, on which a Learner
+**Streak** — the number of consecutive Local Days, ending today or yesterday, on which a Learner
 completed at least one unit of learning. Any Lesson, Challenge, Daily Task, Project or Mission
 Completion counts; none is privileged. A Streak is derived from the date of last learning
 activity rather than stored as a fact, so it lapses on its own the moment a day is missed.
+
+**Local Day** — a calendar day as the Learner lived it, in their own time. A Streak rolls over at
+the Learner's midnight, never a server's. Only their client knows where that midnight falls, so
+it tells the server on every request; the server never infers it from a network address or from
+stored state, both of which are wrong the moment a Learner travels. A request that says nothing
+is read as UTC.
 
 **Longest Streak** — the highest Streak a Learner has ever reached. Unlike a Streak this is a
 historical high-water mark, so it is stored: it cannot be derived from current state.

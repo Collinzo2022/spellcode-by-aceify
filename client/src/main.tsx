@@ -7,6 +7,7 @@ import superjson from "superjson";
 import App from "./App";
 import { startLogin } from "./const";
 import { getSupabaseAccessToken } from "./lib/supabaseAuth";
+import { currentUtcOffsetHeader } from "@shared/utcOffset";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -38,32 +39,38 @@ queryClient.getMutationCache().subscribe(event => {
   }
 });
 
+function authorizationHeader(): Record<string, string> {
+  const supabaseToken = getSupabaseAccessToken();
+  if (supabaseToken) return { Authorization: `Bearer ${supabaseToken}` };
+  // Preview auto-login fallback: when the browser blocks iframe cookies
+  // (Safari ITP / private browsing / WebView), the runtime mirrors the
+  // session into sessionStorage so we can forward it as a Bearer token.
+  // The regular OAuth cookie flow keeps working and takes priority server-side.
+  try {
+    const raw = sessionStorage.getItem("manus-cookie");
+    if (raw) {
+      const prefix = `${COOKIE_NAME}=`;
+      const pair = raw.split(";").find(s => s.trim().startsWith(prefix));
+      const token = pair?.trim().slice(prefix.length);
+      if (token) {
+        return { Authorization: `Bearer ${token}` };
+      }
+    }
+  } catch {
+    // sessionStorage unavailable
+  }
+  return {};
+}
+
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
       headers() {
-        const supabaseToken = getSupabaseAccessToken();
-        if (supabaseToken) return { Authorization: `Bearer ${supabaseToken}` };
-        // Preview auto-login fallback: when the browser blocks iframe cookies
-        // (Safari ITP / private browsing / WebView), the runtime mirrors the
-        // session into sessionStorage so we can forward it as a Bearer token.
-        // The regular OAuth cookie flow keeps working and takes priority server-side.
-        try {
-          const raw = sessionStorage.getItem("manus-cookie");
-          if (raw) {
-            const prefix = `${COOKIE_NAME}=`;
-            const pair = raw.split(";").find(s => s.trim().startsWith(prefix));
-            const token = pair?.trim().slice(prefix.length);
-            if (token) {
-              return { Authorization: `Bearer ${token}` };
-            }
-          }
-        } catch {
-          // sessionStorage unavailable
-        }
-        return {};
+        // Read per request, not once at startup, so a session open across a
+        // daylight saving change or a flight corrects itself.
+        return { ...currentUtcOffsetHeader(), ...authorizationHeader() };
       },
       fetch(input, init) {
         return globalThis.fetch(input, {
