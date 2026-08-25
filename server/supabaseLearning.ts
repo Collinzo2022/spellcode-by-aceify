@@ -113,7 +113,7 @@ export async function completeDailyLearningTask(learnerId: string, input: { scor
   // here is the streak, which is not XP.
   const awardedXp = await awardXp(learnerId, overview.task.xp_reward, { kind: "daily_task", id: overview.task.id });
   await supabaseAdminRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ current_streak: nextStreak, longest_streak: Math.max(overview.profile.longest_streak, nextStreak), last_learning_at: `${today}T12:00:00.000Z`, updated_at: new Date().toISOString() }) });
-  await supabaseAdminRequest("/rest/v1/activity_events", { method: "POST", body: JSON.stringify({ user_id: learnerId, event_type: "daily_task", title: "Daily task completed", detail: `Completed ${overview.task.title}.`, metadata: { daily_task_id: overview.task.id, score: input.score, submitted_code: input.submittedCode ?? {} } }) });
+  await addActivity(learnerId, "daily_task", "Daily task completed", `Completed ${overview.task.title}.`, { daily_task_id: overview.task.id, score: input.score, submitted_code: input.submittedCode ?? {} });
   const newAwards = await reconcileVerifiedAwards(learnerId);
   return { alreadyCompleted: false, awardedXp, streak: nextStreak, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
 }

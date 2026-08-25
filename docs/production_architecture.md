@@ -39,6 +39,15 @@ Getting it backwards fails loudly rather than silently. The server-side Supabase
 | Web frontend | Vite/React static output |
 | API, tRPC, mobile routes, Paystack webhook | Stable Manus-hosted Express backend |
 
+## Pruning the Activity Feed
+
+`activity_events` is presentational (ADR 0003) and, as of ticket 07, genuinely prunable: emptying a Learner's feed leaves every Earned Award, their XP total and their Streak untouched. Every Award counter is recomputed from Completion records; XP and the Streak are read from the profile row, which the feed never fed. The property is held by `server/activity-feed-prunable.test.ts`, which demonstrates it end to end and also checks the source directly, so a future count reading the feed fails a test rather than silently revoking awards.
+
+**No retention or pruning schedule exists, and this is deliberate** — choosing when to prune is a separate decision. Two preconditions bind whoever makes it:
+
+- **The post-deploy re-runs of the two backfills must have completed first**, for the reason given against each migration above: both read rows out of the feed, and pruning first destroys the only record of a Completion made in the window between migration and deploy.
+- **The feed is the only human-readable history a Learner has.** Pruning is safe for their standing, not for what they can see. That is a product decision, not an operational one.
+
 ## Learner local time
 
 CONTEXT.md defines the **Local Day** and why the server is told it rather than guessing. This is the wire contract that carries it.
