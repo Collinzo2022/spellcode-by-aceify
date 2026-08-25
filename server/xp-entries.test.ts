@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSupabaseStub } from "./testing/supabaseStub";
 import { makeSessionUser } from "./learner";
 import { BEGINNER_BUILD_MISSIONS } from "../shared/beginnerModule";
-import { XP_ENTRIES, xpPatches as xpPatchesOf } from "./testing/xpLedger";
+import { XP_ENTRIES, xpWrites } from "./testing/xpLedger";
 
 const { supabase } = vi.hoisted(() => ({
   supabase: { current: null as ReturnType<typeof import("./testing/supabaseStub").createSupabaseStub> | null },
@@ -31,7 +31,8 @@ beforeEach(() => {
 
 const xpEntries = () => stub.writesTo("xp_entries").map(write => write.body as XpEntryBody);
 const profilePatches = () => stub.writesTo("profiles").filter(write => write.method === "PATCH");
-const xpPatches = () => xpPatchesOf(stub);
+const xpPatches = () => xpWrites(stub).patches;
+const xpRecomputes = () => xpWrites(stub).recomputes;
 const lessonRowFor = (slug: string) => stub.lessons.find(lesson => lesson.slug === slug)!;
 const missionRowFor = (slug: string) => stub.missions.find(mission => mission.slug === slug)!;
 const projectRowFor = (slug: string) => stub.projects.find(project => project.slug === slug)!;
@@ -74,10 +75,14 @@ describe("an XP award", () => {
   });
 
   it("moves the cached total only when an entry was actually written", async () => {
+    // Since ticket 09 the cache is recomputed inside the database rather than
+    // patched with a number this process worked out, so what to look for is the
+    // recompute, and no patch of the column at all.
     await completeLesson();
 
-    expect(xpPatches()).toHaveLength(1);
-    expect(xpPatches()[0]!.body).toMatchObject({ xp: 50 });
+    expect(xpRecomputes()).toHaveLength(1);
+    expect(xpRecomputes()[0]!.body).toMatchObject({ learner: LEARNER_ID });
+    expect(xpPatches()).toHaveLength(0);
   });
 
   it("leaves the cached total alone when the database rejects the entry as a duplicate", async () => {
@@ -88,7 +93,7 @@ describe("an XP award", () => {
     const result = await completeLesson();
 
     expect(result.awardedXp).toBe(0);
-    expect(xpPatches()).toHaveLength(0);
+    expect(xpWrites(stub).total).toBe(0);
   });
 });
 
@@ -114,7 +119,7 @@ describe("every unit of learning", () => {
     const result = await learningRouter.createCaller(ctx).submitChallenge({ challengeId: "html-foundations", score: 100, passed: true, summary: "Passed again" });
 
     expect(result.awardedXp).toBe(0);
-    expect(xpPatches()).toHaveLength(0);
+    expect(xpWrites(stub).total).toBe(0);
   });
 
   it("writes no entry when a Challenge is failed", async () => {
@@ -153,9 +158,10 @@ describe("the Daily Task path", () => {
   it("no longer patches the total inline", async () => {
     await learningRouter.createCaller(ctx).completeDailyTask({ score: 100 });
 
-    // Exactly one profile write carries `xp`, and it is the one the ledger made.
-    expect(xpPatches()).toHaveLength(1);
-    expect(xpPatches()[0]!.body).toMatchObject({ xp: DAILY_TASK.xp_reward });
+    // No write patches the `xp` column at all. The only thing that moves the
+    // cached total is the recompute, the same one every other unit goes through.
+    expect(xpPatches()).toHaveLength(0);
+    expect(xpRecomputes()).toHaveLength(1);
   });
 
   it("still records the Learner's streak", async () => {

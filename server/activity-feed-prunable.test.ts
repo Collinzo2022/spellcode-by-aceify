@@ -39,6 +39,7 @@ let stub: ReturnType<typeof createSupabaseStub>;
  */
 function stageFullyVerifiedLearner() {
   stub.stageRows(new RegExp(`^/rest/v1/profiles\\?id=eq\\.${LEARNER_ID}`), [{ id: LEARNER_ID, xp: 350, current_streak: 4, longest_streak: 9, last_learning_at: "2026-08-24T12:00:00.000Z" }]);
+  stub.stageRows(new RegExp(`^/rest/v1/learner_xp_totals\\?user_id=eq\\.${LEARNER_ID}`), [{ user_id: LEARNER_ID, xp: 350 }]);
   stub.stageRows(new RegExp(`^/rest/v1/lesson_progress\\?user_id=eq\\.${LEARNER_ID}`), PATHFINDER_LESSONS.map((slug, index) => ({ id: `progress-${index}`, lesson_id: stub.lessons.find(lesson => lesson.slug === slug)!.id, state: "completed", xp_earned: 50 })));
   stub.stageRows(new RegExp(`^/rest/v1/challenge_attempts\\?user_id=eq\\.${LEARNER_ID}`), [{ id: "attempt-1" }]);
   stub.stageRows(new RegExp(`^/rest/v1/daily_task_completions\\?user_id=eq\\.${LEARNER_ID}`), [{ id: "daily-completion-1" }]);
@@ -85,13 +86,13 @@ describe("a Learner whose Activity Feed is emptied", () => {
    * `current/target` counters is recomputed from Completion records on each
    * call, so emptying the feed could genuinely change them and does not.
    *
-   * The XP and Streak arms are weaker, and honestly so. Both are read straight
-   * off the profile row, which has no dependency on the feed to lose - so they
-   * could not fail here whatever the feed contained. What makes them true is
-   * that nothing recomputes them from the feed, and that is held by the source
-   * guard below rather than by this comparison. XP stops being a stored number
-   * and becomes a sum of XP Entries in ticket 09; the assertion gets its teeth
-   * then.
+   * The XP and Streak arms are weaker, and honestly so. Both are read from a
+   * source staged independently of the feed rows - the ledger view and the
+   * profile row - so neither could fail here whatever the feed contained. Ticket
+   * 09 moved XP off the cached column, which is a real improvement, but it did
+   * not make this particular assertion able to fail. What makes those two true
+   * is that nothing recomputes either from the feed, and that is held by the
+   * source guard below rather than by this comparison.
    */
   it("keeps every Earned Award, their XP total and their Streak", async () => {
     stageFullyVerifiedLearner();

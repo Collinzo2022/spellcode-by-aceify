@@ -1,0 +1,45 @@
+-- SpellCode by Aceify: reverse of supabase_xp_opening_balance_migration.sql.
+--
+-- ############################################################################
+-- ##  THE DATA HALF OF THAT MIGRATION CANNOT BE ROLLED BACK. READ THIS.      ##
+-- ############################################################################
+--
+-- Rolling the APPLICATION back is safe and needs nothing here. The previous
+-- build reads profiles.xp, which the migration left equal to each Learner's
+-- ledger sum, so the old build shows every Learner the correct total and
+-- carries on incrementing it. Roll the application back and stop; you are done.
+--
+-- What cannot be undone is the decomposition itself.
+--
+-- DO NOT DELETE THE OPENING-BALANCE ENTRIES. It is tempting to read them as
+-- "rows the migration added, so removing them undoes the migration". They are
+-- the opposite: they are the ONLY record of XP that a Learner earned before the
+-- ledger existed. That XP never had provenance - decomposing it is what gave it
+-- any - so deleting the entries does not restore a previous state. It destroys
+-- the account and leaves every affected Learner's total unsupported by records,
+-- which is the exact defect ADR 0002 was written to remove.
+--
+-- If they were deleted anyway, profiles.xp would still hold the right number -
+-- but only until the next thing that Learner completes. The deployed
+-- application recomputes the cached total from the ledger on EVERY award, so
+-- the very next Lesson they finish would overwrite their total with a sum that
+-- no longer includes their pre-ledger XP, and it would be gone from both places
+-- at once. There is no guard against this and there cannot be a useful one: the
+-- application has no way to tell a deleted opening balance from a Learner who
+-- legitimately has none. Do not delete them.
+--
+-- The view can be dropped safely, and only the view:
+--   drop view public.learner_xp_totals;
+-- The pre-09 build does not read it. Dropping it does not touch a single row of
+-- the ledger. Note the deployed ticket-09 build DOES read it, so drop it only
+-- after rolling the application back, or every XP read will error.
+--
+-- If a single Learner's opening balance is genuinely wrong - a number that was
+-- already wrong in profiles.xp before any of this, for instance - correct it by
+-- appending, never by editing or deleting. The ledger is append-only:
+--   insert into public.xp_entries (user_id, amount, source_kind, source_id)
+--   values ('<learner id>', <positive correction>, 'opening_balance', '<some other uuid>');
+-- and note this needs a source_id other than the Learner's own, because the
+-- unique constraint allows exactly one opening balance keyed that way. Prefer
+-- raising it with whoever owns the product before inventing a number for a
+-- Learner - which is precisely what this ticket exists to stop.

@@ -96,8 +96,15 @@ export async function getDailyLearningOverview(learnerId: string) {
   const task = await ensureTodayTask();
   const access = await verifyFullAccess(learnerId);
   const completion = await supabaseAdminRequest<CompletionRow[]>(`/rest/v1/daily_task_completions?user_id=eq.${encodeURIComponent(learnerId)}&daily_task_id=eq.${task.id}&select=state,xp_earned,completed_at`);
-  const profile = await supabaseAdminRequest<ProfileRow[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=id,xp,current_streak,longest_streak,last_learning_at`);
-  return { task, completion: completion[0] ?? { state: "not_started", xp_earned: 0, completed_at: null }, profile: profile[0] ?? { id: learnerId, xp: 0, current_streak: 0, longest_streak: 0, last_learning_at: null }, hasPaidAccess: access.hasFullAccess, locked: Boolean(task.required_plan_code && !access.hasFullAccess) };
+  const [profile, xp] = await Promise.all([
+    supabaseAdminRequest<ProfileRow[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=id,xp,current_streak,longest_streak,last_learning_at`),
+    verifiedXpTotal(learnerId),
+  ]);
+  // The XP here is the verified total, not the cached column the row carries.
+  // The web daily page and both mobile payloads read this one object, and a
+  // Learner seeing a different total on their phone than on the dashboard is
+  // the cache being treated as the truth again.
+  return { task, completion: completion[0] ?? { state: "not_started", xp_earned: 0, completed_at: null }, profile: { ...(profile[0] ?? { id: learnerId, current_streak: 0, longest_streak: 0, last_learning_at: null }), xp }, hasPaidAccess: access.hasFullAccess, locked: Boolean(task.required_plan_code && !access.hasFullAccess) };
 }
 
 export async function completeDailyLearningTask(learnerId: string, input: { score: number; submittedCode?: { html?: string; css?: string; javascript?: string } }) {
@@ -148,31 +155,85 @@ type XpSource = { kind: "lesson" | "challenge" | "daily_task" | "project" | "mis
  * narrowing a read-modify-write window it cannot close. PostgREST answers an
  * ignored duplicate with no rows, which is how a replayed request is recognised.
  *
- * `profiles.xp` is still the total a Learner is shown, so it is moved here too -
- * as a cache of the ledger, incremented only when an entry was actually
- * written. Deriving it from the entries is ticket 09, and cannot happen before
- * the opening-balance backfill: pre-ledger XP has no entries to sum.
- *
- * THE CACHE STILL RACES, and this ticket does not fix it. Two awards landing
- * together both produce entries - the ledger is correct and complete - but the
- * read-modify-write below can lose one increment, so the number a Learner is
- * *shown* can fall behind what they earned. That is exactly the drift ticket 09
- * makes detectable and correctable by recomputing the total from the entries,
- * which is why the entries are worth writing before the cache is fixed.
+ * `profiles.xp` is a cache of this ledger and is recomputed from it below,
+ * never incremented and never written from a value this process read earlier.
  *
  * Returns the XP actually granted, which is 0 for a duplicate.
  */
 async function awardXp(learnerId: string, amount: number, source: XpSource) {
   const entries = await supabaseAdminRequest<Array<{ id: string }>>("/rest/v1/xp_entries?on_conflict=user_id,source_kind,source_id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" }, body: JSON.stringify({ user_id: learnerId, amount, source_kind: source.kind, source_id: source.id }) });
   if (!entries.length) return 0;
-  const profiles = await supabaseAdminRequest<Array<{ xp: number; current_streak: number; longest_streak: number }>>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=xp,current_streak,longest_streak&limit=1`);
-  const profile = profiles[0] ?? { xp: 0, current_streak: 0, longest_streak: 0 };
+  await recomputeCachedXpTotal(learnerId);
+  const profiles = await supabaseAdminRequest<Array<{ current_streak: number; longest_streak: number }>>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=current_streak,longest_streak&limit=1`);
+  const profile = profiles[0] ?? { current_streak: 0, longest_streak: 0 };
   // The two streak fields are vestigial: they came from the addXp this replaced,
   // and they are why a Learner's first completion shows a Streak of 1 at all.
   // Kept because removing them changes what a Learner sees, and the Streak is
-  // ticket 11's subject, not this one's.
-  await supabaseAdminRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}`, { method: "PATCH", body: JSON.stringify({ xp: profile.xp + amount, current_streak: Math.max(profile.current_streak, 1), longest_streak: Math.max(profile.longest_streak, 1), updated_at: new Date().toISOString() }) });
+  // ticket 11's subject, not this one's. Deliberately a separate write from the
+  // XP recompute above: this one is a read-modify-write and still races, which
+  // is a Streak problem and not an XP one.
+  await supabaseAdminRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ current_streak: Math.max(profile.current_streak, 1), longest_streak: Math.max(profile.longest_streak, 1), updated_at: new Date().toISOString() }) });
   return amount;
+}
+
+/**
+ * Rewrite a Learner's cached total from their ledger, atomically.
+ *
+ * The recompute happens inside the database, in one UPDATE whose new value is a
+ * subquery over the ledger. Doing it here instead - reading the sum, then
+ * writing it back - would still be a read-modify-write however absolute the
+ * value written: two awards landing together could both read, then both write,
+ * and the later write carry the earlier sum. That is the window ticket 08 left
+ * open and this closes; the application cannot close it on its own.
+ */
+async function recomputeCachedXpTotal(learnerId: string) {
+  const total = await supabaseAdminRequest<number>("/rest/v1/rpc/recompute_learner_xp", { method: "POST", body: JSON.stringify({ learner: learnerId }) });
+  return typeof total === "number" ? total : 0;
+}
+
+/**
+ * A Learner's XP: the sum of their XP Entries, and the only number any award,
+ * gate or display may treat as their total (ADR 0002).
+ *
+ * Read from a view rather than by summing rows in the application, because the
+ * ledger grows without bound and PostgREST caps how many rows it returns. A sum
+ * over a page of entries would go quietly wrong for exactly the Learners who
+ * have earned the most.
+ *
+ * A Learner with no entries has no row in the view, and their total is 0. It
+ * deliberately does not fall back to `profiles.xp`: that would restore the old
+ * authority for precisely the Learners whose ledger cannot vouch for them.
+ */
+async function verifiedXpTotal(learnerId: string) {
+  const totals = await supabaseAdminRequest<Array<{ xp: number }>>(`/rest/v1/learner_xp_totals?user_id=eq.${encodeURIComponent(learnerId)}&select=xp&limit=1`);
+  return totals[0]?.xp ?? 0;
+}
+
+/**
+ * Compare a Learner's cached total against their ledger, and correct it.
+ *
+ * The correction is the ledger's own sum. No adjustment is computed and no
+ * number is invented: if the two disagree, the entries are right by definition
+ * and the cache is simply overwritten with what they add up to.
+ *
+ * Divergence should not arise now that the cache is recomputed from the ledger
+ * on every award, but a cache that can drift and cannot be checked is how XP
+ * got into trouble in the first place. This is the check.
+ *
+ * It has no caller in production: there is no admin route to hang it on, and
+ * inventing one is not this ticket's business. It is here to be called - from a
+ * script, a route, or a test - and the same check exists as SQL in the
+ * migration's verification block for whoever is holding a psql prompt instead.
+ */
+export async function reconcileXpTotal(learnerId: string) {
+  const [profiles, ledger] = await Promise.all([
+    supabaseAdminRequest<Array<{ xp: number }>>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=xp&limit=1`),
+    verifiedXpTotal(learnerId),
+  ]);
+  const cached = profiles[0]?.xp ?? 0;
+  const diverged = cached !== ledger;
+  if (diverged) await recomputeCachedXpTotal(learnerId);
+  return { cached, ledger, diverged };
 }
 
 async function recordEarnedAward(learnerId: string, slug: string) {
@@ -201,17 +262,21 @@ async function clearedMissionIds(learnerId: string) {
 
 async function getAwardSnapshot(learnerId: string): Promise<AwardMetricSnapshot> {
   const { lessons } = await ensureSupabaseCurriculum();
-  const [profiles, progress, passedChallenges, dailyCompletions, projectCompletions, clearedMissions] = await Promise.all([
-    supabaseAdminRequest<ProfileRow[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=id,xp,current_streak,longest_streak,last_learning_at&limit=1`),
+  const [profiles, progress, passedChallenges, dailyCompletions, projectCompletions, clearedMissions, xp] = await Promise.all([
+    supabaseAdminRequest<ProfileRow[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=id,current_streak,longest_streak,last_learning_at&limit=1`),
     supabaseAdminRequest<Array<{ lesson_id: string }>>(`/rest/v1/lesson_progress?user_id=eq.${encodeURIComponent(learnerId)}&state=eq.completed&select=lesson_id`),
     supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/challenge_attempts?user_id=eq.${encodeURIComponent(learnerId)}&passed=eq.true&select=id`),
     supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/daily_task_completions?user_id=eq.${encodeURIComponent(learnerId)}&state=eq.completed&select=id`),
     supabaseAdminRequest<Array<{ project_id: string }>>(`/rest/v1/project_progress?user_id=eq.${encodeURIComponent(learnerId)}&completed_at=not.is.null&select=project_id`),
     clearedMissionIds(learnerId),
+    verifiedXpTotal(learnerId),
   ]);
   const lessonById = new Map(lessons.map(lesson => [lesson.id, lesson.slug]));
   const profile = profiles[0] ?? { xp: 0, current_streak: 0 };
-  return { xp: profile.xp, currentStreak: profile.current_streak, completedLessonSlugs: progress.map(item => lessonById.get(item.lesson_id)).filter((slug): slug is string => Boolean(slug)), passedChallengeCount: passedChallenges.length, completedDailyCount: dailyCompletions.length, completedProjectCount: projectCompletions.length, completedBeginnerBuildMissionCount: clearedMissions.size };
+  // XP comes from the ledger, not from `profile`. Steady Hand ("Earn 200 XP")
+  // was the one award granted from a number no record could defend; it is now
+  // verified from the same kind of evidence as every other award.
+  return { xp, currentStreak: profile.current_streak, completedLessonSlugs: progress.map(item => lessonById.get(item.lesson_id)).filter((slug): slug is string => Boolean(slug)), passedChallengeCount: passedChallenges.length, completedDailyCount: dailyCompletions.length, completedProjectCount: projectCompletions.length, completedBeginnerBuildMissionCount: clearedMissions.size };
 }
 
 async function reconcileVerifiedAwards(learnerId: string, providedSnapshot?: AwardMetricSnapshot) {
@@ -232,7 +297,7 @@ export async function getSupabaseLearnerDashboard(learnerId: string) {
   const awardSnapshot = await getAwardSnapshot(learnerId);
   await reconcileVerifiedAwards(learnerId, awardSnapshot);
   const [profiles, enrollments, progress, activity, userAwards] = await Promise.all([
-    supabaseAdminRequest<ProfileRow[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=id,xp,current_streak,longest_streak,last_learning_at&limit=1`),
+    supabaseAdminRequest<ProfileRow[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=id,current_streak,longest_streak,last_learning_at&limit=1`),
     supabaseAdminRequest<EnrollmentRow[]>(`/rest/v1/enrollments?user_id=eq.${encodeURIComponent(learnerId)}&select=id,track_id`),
     supabaseAdminRequest<ProgressRow[]>(`/rest/v1/lesson_progress?user_id=eq.${encodeURIComponent(learnerId)}&select=id,lesson_id,state,xp_earned`),
     supabaseAdminRequest<ActivityRow[]>(`/rest/v1/activity_events?user_id=eq.${encodeURIComponent(learnerId)}&select=id,event_type,title,detail,created_at&order=created_at.desc&limit=6`),
@@ -247,7 +312,10 @@ export async function getSupabaseLearnerDashboard(learnerId: string) {
   const awardedSlugs = new Set(allAwards.filter(item => earnedAwardIds.has(item.id)).map(item => item.slug));
   const verifiedAwardCatalog = verifiedAwards(awardSnapshot);
   return {
-    stats: { xp: profile.xp, streak: profile.current_streak, completedLessons },
+    // The verified total, the same number Steady Hand is granted from. Showing
+    // the cached column here would let a Learner see a total their ledger does
+    // not support.
+    stats: { xp: awardSnapshot.xp, streak: profile.current_streak, completedLessons },
     beginnerModule: { completedMissions: awardSnapshot.completedBeginnerBuildMissionCount, totalMissions: BEGINNER_BUILD_MISSIONS.length },
     progress: progress.map(item => {
       const lesson = lessonById.get(item.lesson_id);

@@ -12,12 +12,18 @@ type Stub = ReturnType<typeof createSupabaseStub>;
 export const XP_ENTRIES = /^\/rest\/v1\/xp_entries\?on_conflict=user_id,source_kind,source_id/;
 
 /**
- * Profile writes that carry a new XP total.
+ * Every write that sets a Learner's cached XP total.
  *
- * Matched on the presence of the `xp` key rather than on the path, because what
- * the ticket forbids is any *other* code patching the total - and such a patch
- * goes to the same profile row by the same URL. Only the body tells them apart.
+ * Two shapes count. The legitimate one is the atomic recompute, which is a
+ * database function rather than a PATCH: the total is rewritten from the ledger
+ * inside a single statement, so no value this process read can be written back.
+ * The other is any direct patch of the `xp` column, which is what ticket 08
+ * abolished and what would reintroduce the lost-update race - matched on the
+ * body rather than the path, because such a patch goes to the same profile row
+ * by the same URL as the streak write beside it.
  */
-export function xpPatches(stub: Stub) {
-  return stub.writesTo("profiles").filter(write => write.method === "PATCH" && Object.prototype.hasOwnProperty.call(write.body ?? {}, "xp"));
+export function xpWrites(stub: Stub) {
+  const recomputes = stub.writesTo("rpc/recompute_learner_xp");
+  const patches = stub.writesTo("profiles").filter(write => write.method === "PATCH" && Object.prototype.hasOwnProperty.call(write.body ?? {}, "xp"));
+  return { recomputes, patches, total: recomputes.length + patches.length };
 }

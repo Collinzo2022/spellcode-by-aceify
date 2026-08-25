@@ -2,7 +2,7 @@ import express from "express";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSupabaseStub } from "./testing/supabaseStub";
 import { makeSessionUser } from "./learner";
-import { XP_ENTRIES, xpPatches as xpPatchesOf } from "./testing/xpLedger";
+import { XP_ENTRIES, xpWrites } from "./testing/xpLedger";
 
 const LEARNER_ID = "learner-1";
 
@@ -41,7 +41,8 @@ async function post(path: string, body: unknown) {
   return { status: response.status, body: payload };
 }
 
-const xpPatches = () => xpPatchesOf(stub);
+const xpPatches = () => xpWrites(stub).patches;
+const xpRecomputes = () => xpWrites(stub).recomputes;
 
 /**
  * The Android client completes Lessons through this route. It was a third XP
@@ -77,7 +78,7 @@ describe("the mobile Lesson route", () => {
 
     expect(body).toMatchObject({ alreadyCompleted: true, awardedXp: 0 });
     expect(stub.writesTo("xp_entries")).toEqual([]);
-    expect(xpPatches()).toEqual([]);
+    expect(xpWrites(stub).total).toBe(0);
   });
 
   it("awards nothing when the ledger rejects the entry as a duplicate", async () => {
@@ -86,7 +87,7 @@ describe("the mobile Lesson route", () => {
     const { body } = await post("/api/mobile/lesson/complete", { lessonSlug: "html-foundations" });
 
     expect(body).toMatchObject({ awardedXp: 0 });
-    expect(xpPatches()).toEqual([]);
+    expect(xpWrites(stub).total).toBe(0);
   });
 
   it("still answers 404 for a Lesson that is not in storage yet", async () => {

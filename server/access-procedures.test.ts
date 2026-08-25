@@ -36,6 +36,9 @@ beforeEach(() => {
 describe("the learner dashboard", () => {
   it("reports the signed-in learner's own stored progress", async () => {
     stub.stageRows(new RegExp(`^/rest/v1/profiles\\?id=eq\\.${LEARNER_ID}`), [{ id: LEARNER_ID, xp: 120, current_streak: 4, longest_streak: 9, last_learning_at: "2026-08-23" }]);
+    // XP is the sum of the Learner's XP Entries since ticket 09; the column on
+    // the profile is a cache of it and is not what the dashboard reports.
+    stub.stageRows(new RegExp(`^/rest/v1/learner_xp_totals\\?user_id=eq\\.${LEARNER_ID}`), [{ user_id: LEARNER_ID, xp: 120 }]);
     stub.stageRows(new RegExp(`^/rest/v1/lesson_progress\\?user_id=eq\\.${LEARNER_ID}&select=`), [
       { id: "progress-1", lesson_id: stub.lessons[0]!.id, state: "completed", xp_earned: 30 },
       { id: "progress-2", lesson_id: stub.lessons[1]!.id, state: "in_progress", xp_earned: 0 },

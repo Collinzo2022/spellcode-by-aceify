@@ -194,6 +194,41 @@ create table public.xp_entries (
 
 create index xp_entries_user_id_idx on public.xp_entries(user_id);
 
+-- A Learner's XP total. Every read of it goes through here rather than the
+-- application summing rows: the ledger grows without bound and PostgREST caps
+-- returned rows, so an application-side sum would go quietly wrong for exactly
+-- the Learners who have earned the most. profiles.xp is a cache of this.
+--
+-- security_invoker makes the view obey the caller's row-level security rather
+-- than the definer's, so it cannot become a way to read another Learner's
+-- total. Requires Postgres 15 or later.
+create view public.learner_xp_totals
+  with (security_invoker = on) as
+select user_id, coalesce(sum(amount), 0)::integer as xp
+  from public.xp_entries
+ group by user_id;
+
+-- Recompute one Learner's cached total from their ledger, atomically. The
+-- application calls this rather than reading the sum and writing it back:
+-- read-then-write is a lost-update race however absolute the value written,
+-- while a single UPDATE whose value is a subquery holds the row lock for the
+-- whole statement. security definer with a pinned search_path, and revoked from
+-- every role but the service key.
+create or replace function public.recompute_learner_xp(learner uuid)
+returns integer
+language sql
+security definer
+set search_path = public
+as $$
+  update public.profiles p
+     set xp = coalesce((select xp from public.learner_xp_totals t where t.user_id = learner), 0),
+         updated_at = now()
+   where p.id = learner
+  returning p.xp;
+$$;
+
+revoke all on function public.recompute_learner_xp(uuid) from public, anon, authenticated;
+
 create table public.awards (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,
