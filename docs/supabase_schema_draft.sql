@@ -163,6 +163,37 @@ create table public.mission_completions (
   unique(user_id, mission_id)
 );
 
+-- The system of record for XP (ADR 0002). One row per XP award, naming the
+-- Completion that caused it. Append-only: nothing updates or deletes a row.
+-- profiles.xp is a cache of the sum of these.
+--
+-- source_id is the id of the unit of learning completed - the Lesson, Challenge,
+-- Daily Task, Project or Mission. Together with user_id it identifies one
+-- Learner's Completion of one unit exactly, because every Completion table is
+-- itself unique per Learner per unit. The unique constraint below is therefore
+-- what makes a double award impossible, rather than application code narrowing a
+-- read-modify-write window it cannot close.
+--
+-- 'opening_balance' is reserved for ticket 09's backfill of pre-ledger totals,
+-- which have no Completion to name; it uses the Learner's own id as its source,
+-- so the same constraint allows exactly one per Learner.
+create table public.xp_entries (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  -- Zero is allowed, not because an earned award is ever zero, but because ticket
+  -- 09 must write an opening-balance entry for EVERY existing Learner and some
+  -- have no XP yet. Forbidding it here would force a schema change on a table
+  -- that is by then append-only and in use. What the constraint exists to
+  -- enforce is that XP never decreases (CONTEXT.md), and >= 0 still does that.
+  amount integer not null check (amount >= 0),
+  source_kind text not null check (source_kind in ('lesson', 'challenge', 'daily_task', 'project', 'mission', 'opening_balance')),
+  source_id uuid not null,
+  created_at timestamptz not null default now(),
+  unique(user_id, source_kind, source_id)
+);
+
+create index xp_entries_user_id_idx on public.xp_entries(user_id);
+
 create table public.awards (
   id uuid primary key default gen_random_uuid(),
   slug text not null unique,
@@ -259,6 +290,7 @@ alter table public.challenge_attempts enable row level security;
 alter table public.coding_workspaces enable row level security;
 alter table public.project_progress enable row level security;
 alter table public.mission_completions enable row level security;
+alter table public.xp_entries enable row level security;
 alter table public.user_awards enable row level security;
 alter table public.activity_events enable row level security;
 alter table public.subscriptions enable row level security;
@@ -272,6 +304,7 @@ create policy "challenge_attempts_manage_own" on public.challenge_attempts for a
 create policy "workspaces_manage_own" on public.coding_workspaces for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "project_progress_manage_own" on public.project_progress for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "mission_completions_read_own" on public.mission_completions for select using (auth.uid() = user_id);
+create policy "xp_entries_read_own" on public.xp_entries for select using (auth.uid() = user_id);
 create policy "user_awards_read_own" on public.user_awards for select using (auth.uid() = user_id);
 create policy "activity_events_read_own" on public.activity_events for select using (auth.uid() = user_id);
 create policy "subscriptions_read_own" on public.subscriptions for select using (auth.uid() = user_id);

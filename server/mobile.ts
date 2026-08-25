@@ -1,6 +1,6 @@
 import { learnerIdOf } from "./learner";
 import type { Express, Request, Response } from "express";
-import { completeDailyLearningTask, getDailyLearningOverview, verifyFullAccess } from "./supabaseLearning";
+import { completeDailyLearningTask, completeSupabaseLesson, getDailyLearningOverview, verifyFullAccess } from "./supabaseLearning";
 import { getSupabaseSessionUser } from "./supabase";
 import { supabaseAdminRequest } from "./supabase";
 import { CURRICULUM } from "../shared/curriculum";
@@ -35,21 +35,26 @@ export function registerMobileRoutes(app: Express) {
     const user = await mobileUser(req);
     const lessonSlug = String(req.body?.lessonSlug ?? "");
     if (!user) return res.status(401).json({ error: "Authentication required" });
-    const lesson = CURRICULUM.flatMap(track => track.lessons).find(item => item.id === lessonSlug);
-    if (!lesson) return res.status(404).json({ error: "Lesson not found" });
+    // The Track is carried alongside the Lesson because the shared completion
+    // path is told which Track a Lesson belongs to, and a Lesson does not know.
+    const trackedLesson = CURRICULUM.flatMap(track => track.lessons.map(item => ({ track, lesson: item }))).find(item => item.lesson.id === lessonSlug);
+    if (!trackedLesson) return res.status(404).json({ error: "Lesson not found" });
+    const { track, lesson } = trackedLesson;
     if (lesson.order > 1 && !(await verifyFullAccess(learnerIdOf(user))).hasFullAccess) return res.status(403).json({ error: "This lesson is part of Full Access" });
     try {
       const stored = await supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/lessons?slug=eq.${encodeURIComponent(lessonSlug)}&select=id&limit=1`);
       const storedLesson = stored[0];
       if (!storedLesson) return res.status(404).json({ error: "Lesson is not available yet" });
-      const existing = await supabaseAdminRequest<Array<{ state: string }>>(`/rest/v1/lesson_progress?user_id=eq.${encodeURIComponent(learnerIdOf(user))}&lesson_id=eq.${storedLesson.id}&select=state&limit=1`);
-      const alreadyCompleted = existing[0]?.state === "completed";
-      await supabaseAdminRequest("/rest/v1/lesson_progress?on_conflict=user_id,lesson_id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: learnerIdOf(user), lesson_id: storedLesson.id, state: "completed", score: 100, xp_earned: lesson.xp, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
-      if (!alreadyCompleted) {
-        const profile = await supabaseAdminRequest<Array<{ xp: number }>>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerIdOf(user))}&select=xp&limit=1`);
-        await supabaseAdminRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerIdOf(user))}`, { method: "PATCH", body: JSON.stringify({ xp: (profile[0]?.xp ?? 0) + lesson.xp, updated_at: new Date().toISOString() }) });
-      }
-      return res.json({ alreadyCompleted, awardedXp: alreadyCompleted ? 0 : lesson.xp });
+      // Completing a Lesson is completeSupabaseLesson's job, on the phone as on
+      // the web. This route used to reimplement it: a read-modify-write on
+      // profiles.xp - a third XP write path, which ADR 0002 abolishes - and
+      // neither an Activity Feed row nor any Earned Award reconciliation, so a
+      // Learner working on the phone never earned First Spark.
+      // The lookup above stays only to answer 404 for a Lesson not yet stored;
+      // the shared path reports that as an error, and the Android client reads
+      // the status code.
+      const completion = await completeSupabaseLesson(learnerIdOf(user), { lessonId: lessonSlug, track: track.name, difficulty: lesson.difficulty, xp: lesson.xp });
+      return res.json({ alreadyCompleted: !completion.isNewCompletion, awardedXp: completion.awardedXp, newAwards: completion.newAwards });
     } catch (error) { return res.status(500).json({ error: error instanceof Error ? error.message : "Unable to save lesson completion" }); }
   });
   app.post("/api/mobile/daily/complete", async (req: Request, res: Response) => {

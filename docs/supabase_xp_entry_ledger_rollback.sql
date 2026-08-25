@@ -1,0 +1,30 @@
+-- SpellCode by Aceify: reverse of supabase_xp_entry_ledger_migration.sql.
+--
+-- There is deliberately nothing to run for an application rollback.
+--
+-- The pre-ticket-08 build read and wrote profiles.xp and knew nothing of
+-- public.xp_entries. Ticket 08 left profiles.xp as the Learner's visible total
+-- and kept incrementing it, so a rollback loses no XP and needs no data change:
+-- the old build simply ignores the table.
+--
+-- DO NOT DROP THE TABLE. Two reasons, and the second is the serious one:
+--
+--   1. Every XP award since the deploy is recorded here and nowhere else in an
+--      auditable form. Dropping it destroys the provenance the ticket exists to
+--      create, while leaving the totals it explains in place.
+--   2. Once ticket 09 has run, profiles.xp is a cache of this table and the
+--      opening-balance entries are the only record of pre-ledger XP. Dropping
+--      the table after that point makes every total unrecomputable and
+--      unexplainable, permanently. Ticket 09 is explicitly the one-way step.
+--
+-- Rolling the application back does NOT require the entries to be removed, and
+-- rolling forward again resumes appending to them correctly - the unique
+-- constraint on (user_id, source_kind, source_id) means a Completion paid for
+-- before the rollback cannot be paid for twice after it. That is the constraint
+-- earning its keep.
+--
+-- If the feature is abandoned rather than rolled back, and ticket 09 has NOT
+-- run, the table can be dropped without loss of a Learner's visible total:
+--   drop table public.xp_entries;
+-- If ticket 09 HAS run, do not drop it. Recompute nothing and change nothing
+-- without a decision about what a Learner's XP then means.

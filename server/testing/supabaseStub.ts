@@ -13,7 +13,8 @@ import { BEGINNER_BUILD_MISSIONS } from "../../shared/beginnerModule";
 
 export type RecordedWrite = { path: string; method: string; body: unknown; prefer: string };
 
-type StagedRead = { match: RegExp; rows: unknown };
+/** Rows a test has staged for a matching request, read or write. */
+type StagedRows = { match: RegExp; rows: unknown };
 
 /**
  * Track, lesson and project rows derived from the real curriculum.
@@ -71,7 +72,8 @@ function prefersRepresentation(init: RequestInit) {
 
 export function createSupabaseStub(learnerId: string) {
   const { tracks, lessons, projects, missions } = curriculumRows();
-  const staged: StagedRead[] = [];
+  const staged: StagedRows[] = [];
+  const stagedWrites: StagedRows[] = [];
   const writes: RecordedWrite[] = [];
 
   const request = vi.fn(async (path: string, init: RequestInit = {}) => {
@@ -83,6 +85,8 @@ export function createSupabaseStub(learnerId: string) {
       // PostgREST echoes the written rows back only when asked to. Production
       // code branches on that response, so the stub must honour it.
       if (!prefersRepresentation(init)) return [];
+      const stagedWrite = stagedWrites.find(entry => entry.match.test(path));
+      if (stagedWrite) return stagedWrite.rows;
       return Array.isArray(body) ? body : [body];
     }
 
@@ -108,6 +112,18 @@ export function createSupabaseStub(learnerId: string) {
     /** Stage rows to be returned by reads whose path matches. Latest wins. */
     stageRows(match: RegExp, rows: unknown) {
       staged.unshift({ match, rows });
+    },
+
+    /**
+     * Stage what a *write* echoes back, for writes that ask for representation.
+     *
+     * PostgREST returns the empty array when `resolution=ignore-duplicates`
+     * discarded the row, which is how production code learns that a record
+     * already existed. Staging `[]` is the only way to reach that branch: the
+     * stub otherwise echoes whatever was written, so the row always looks new.
+     */
+    stageWrites(match: RegExp, rows: unknown) {
+      stagedWrites.unshift({ match, rows });
     },
 
     /**

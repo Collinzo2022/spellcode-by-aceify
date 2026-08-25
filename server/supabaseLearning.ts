@@ -106,12 +106,16 @@ export async function completeDailyLearningTask(learnerId: string, input: { scor
   if (overview.completion.state === "completed") return { alreadyCompleted: true, awardedXp: 0, streak: overview.profile.current_streak };
   const today = dayKey(); const lastDay = overview.profile.last_learning_at?.slice(0, 10); const yesterday = dayKey(new Date(Date.now() - DAY_MS));
   const nextStreak = lastDay === yesterday ? overview.profile.current_streak + 1 : 1;
-  const nextXp = overview.profile.xp + overview.task.xp_reward;
   await supabaseAdminRequest(`/rest/v1/daily_task_completions?on_conflict=user_id,daily_task_id`, { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: learnerId, daily_task_id: overview.task.id, state: "completed", score: input.score, xp_earned: overview.task.xp_reward, completed_at: new Date().toISOString() }) });
-  await supabaseAdminRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ xp: nextXp, current_streak: nextStreak, longest_streak: Math.max(overview.profile.longest_streak, nextStreak), last_learning_at: `${today}T12:00:00.000Z`, updated_at: new Date().toISOString() }) });
+  // XP goes through awardXp like every other unit of learning. This path used
+  // to patch the total inline, which made it a second write path with the same
+  // race and no record of what the number was made of (ADR 0002). What stays
+  // here is the streak, which is not XP.
+  const awardedXp = await awardXp(learnerId, overview.task.xp_reward, { kind: "daily_task", id: overview.task.id });
+  await supabaseAdminRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}`, { method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ current_streak: nextStreak, longest_streak: Math.max(overview.profile.longest_streak, nextStreak), last_learning_at: `${today}T12:00:00.000Z`, updated_at: new Date().toISOString() }) });
   await supabaseAdminRequest("/rest/v1/activity_events", { method: "POST", body: JSON.stringify({ user_id: learnerId, event_type: "daily_task", title: "Daily task completed", detail: `Completed ${overview.task.title}.`, metadata: { daily_task_id: overview.task.id, score: input.score, submitted_code: input.submittedCode ?? {} } }) });
   const newAwards = await reconcileVerifiedAwards(learnerId);
-  return { alreadyCompleted: false, awardedXp: overview.task.xp_reward, streak: nextStreak, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
+  return { alreadyCompleted: false, awardedXp, streak: nextStreak, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
 }
 
 type EnrollmentRow = { id: string; track_id: string };
@@ -124,10 +128,51 @@ async function addActivity(learnerId: string, eventType: string, title: string, 
   await supabaseAdminRequest("/rest/v1/activity_events", { method: "POST", body: JSON.stringify({ user_id: learnerId, event_type: eventType, title, detail, metadata }) });
 }
 
-async function addXp(learnerId: string, amount: number) {
+/**
+ * Which Completion an XP award is for.
+ *
+ * The kind names the unit of learning; the id is the unit the Learner
+ * completed, which together with the Learner identifies their Completion of it
+ * exactly. Every Completion table is unique per Learner per unit, so the pair
+ * maps one-to-one onto a Completion record without a round-trip to fetch its
+ * row id.
+ */
+type XpSource = { kind: "lesson" | "challenge" | "daily_task" | "project" | "mission"; id: string };
+
+/**
+ * The single path by which a Learner is granted XP (ADR 0002).
+ *
+ * An XP Entry is appended naming the Completion that caused it, and the unique
+ * constraint on (user_id, source_kind, source_id) is what makes a double award
+ * impossible: the database rejects the second write rather than the application
+ * narrowing a read-modify-write window it cannot close. PostgREST answers an
+ * ignored duplicate with no rows, which is how a replayed request is recognised.
+ *
+ * `profiles.xp` is still the total a Learner is shown, so it is moved here too -
+ * as a cache of the ledger, incremented only when an entry was actually
+ * written. Deriving it from the entries is ticket 09, and cannot happen before
+ * the opening-balance backfill: pre-ledger XP has no entries to sum.
+ *
+ * THE CACHE STILL RACES, and this ticket does not fix it. Two awards landing
+ * together both produce entries - the ledger is correct and complete - but the
+ * read-modify-write below can lose one increment, so the number a Learner is
+ * *shown* can fall behind what they earned. That is exactly the drift ticket 09
+ * makes detectable and correctable by recomputing the total from the entries,
+ * which is why the entries are worth writing before the cache is fixed.
+ *
+ * Returns the XP actually granted, which is 0 for a duplicate.
+ */
+async function awardXp(learnerId: string, amount: number, source: XpSource) {
+  const entries = await supabaseAdminRequest<Array<{ id: string }>>("/rest/v1/xp_entries?on_conflict=user_id,source_kind,source_id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" }, body: JSON.stringify({ user_id: learnerId, amount, source_kind: source.kind, source_id: source.id }) });
+  if (!entries.length) return 0;
   const profiles = await supabaseAdminRequest<Array<{ xp: number; current_streak: number; longest_streak: number }>>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=xp,current_streak,longest_streak&limit=1`);
   const profile = profiles[0] ?? { xp: 0, current_streak: 0, longest_streak: 0 };
+  // The two streak fields are vestigial: they came from the addXp this replaced,
+  // and they are why a Learner's first completion shows a Streak of 1 at all.
+  // Kept because removing them changes what a Learner sees, and the Streak is
+  // ticket 11's subject, not this one's.
   await supabaseAdminRequest(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}`, { method: "PATCH", body: JSON.stringify({ xp: profile.xp + amount, current_streak: Math.max(profile.current_streak, 1), longest_streak: Math.max(profile.longest_streak, 1), updated_at: new Date().toISOString() }) });
+  return amount;
 }
 
 async function recordEarnedAward(learnerId: string, slug: string) {
@@ -233,10 +278,10 @@ export async function completeSupabaseLesson(learnerId: string, input: { lessonI
   const isNewCompletion = existing[0]?.state !== "completed";
   await supabaseAdminRequest("/rest/v1/lesson_progress?on_conflict=user_id,lesson_id", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify({ user_id: learnerId, lesson_id: lesson.id, state: "completed", score: 100, xp_earned: input.xp, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
   if (isNewCompletion) {
-    await addXp(learnerId, input.xp);
+    const awardedXp = await awardXp(learnerId, input.xp, { kind: "lesson", id: lesson.id });
     await addActivity(learnerId, "lesson", "Lesson completed", `Completed ${input.lessonId.replace(/-/g, " ")}.`, { lesson_slug: input.lessonId });
     const newAwards = await reconcileVerifiedAwards(learnerId);
-    return { completed: true, isNewCompletion, awardedXp: input.xp, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
+    return { completed: true, isNewCompletion, awardedXp, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
   }
   return { completed: true, isNewCompletion, awardedXp: 0, newAwards: [] as Array<{ awardSlug: string; name: string }> };
 }
@@ -248,16 +293,18 @@ export async function recordSupabaseChallengeAttempt(learnerId: string, input: {
   const challenges = await supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/challenges?lesson_id=eq.${lesson.id}&select=id&limit=1`);
   const challenge = challenges[0];
   if (!challenge) throw new Error("Challenge is not available yet");
-  const awardedXp = input.passed ? 20 : 0;
   await supabaseAdminRequest("/rest/v1/challenge_attempts", { method: "POST", body: JSON.stringify({ user_id: learnerId, challenge_id: challenge.id, score: input.score, passed: input.passed, feedback: { summary: input.summary } }) });
   await addActivity(learnerId, "challenge", input.passed ? "Challenge passed" : "Challenge attempted", input.summary, { lesson_slug: input.challengeId, score: input.score });
-  if (awardedXp) await addXp(learnerId, awardedXp);
+  // The entry names the Challenge, not the attempt. An attempt is a new row
+  // every submission, so keying on it would pay a Learner again for
+  // resubmitting work they had already passed - and Steady Hand ("Earn 200 XP")
+  // rests on this total. Passing a Challenge is paid once.
+  const awardedXp = input.passed ? await awardXp(learnerId, 20, { kind: "challenge", id: challenge.id }) : 0;
   const newAwards = input.passed ? await reconcileVerifiedAwards(learnerId) : [];
   return { saved: true, awardedXp, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
 }
 
 export async function recordSupabaseProjectCompletion(learnerId: string, input: { projectId: string; title: string }) {
-  const awardedXp = 100;
   const { projects } = await ensureSupabaseCurriculum();
   const project = projects.find(row => row.slug === input.projectId);
   if (!project) throw new Error("This project is not available.");
@@ -267,7 +314,7 @@ export async function recordSupabaseProjectCompletion(learnerId: string, input: 
   // Ignore rather than merge: a second completion must not overwrite the date
   // the Learner first finished this Project. That date is the Completion.
   await supabaseAdminRequest("/rest/v1/project_progress?on_conflict=user_id,project_id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates" }, body: JSON.stringify({ user_id: learnerId, project_id: project.id, completed_at: new Date().toISOString(), updated_at: new Date().toISOString() }) });
-  await addXp(learnerId, awardedXp);
+  const awardedXp = await awardXp(learnerId, 100, { kind: "project", id: project.id });
   await addActivity(learnerId, "project", "Project completed", `Completed the ${input.title} project.`, { project_slug: input.projectId });
   const newAwards = await reconcileVerifiedAwards(learnerId);
   return { saved: true, projectId: input.projectId, awardedXp, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
@@ -293,8 +340,8 @@ export async function completeBeginnerBuildMission(learnerId: string, input: { m
   // Ignore rather than merge: a second clearing must not overwrite the date the
   // Learner first cleared this Mission. That date is the Completion.
   await supabaseAdminRequest("/rest/v1/mission_completions?on_conflict=user_id,mission_id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates" }, body: JSON.stringify({ user_id: learnerId, mission_id: missionRow.id, completed_at: new Date().toISOString() }) });
-  await addXp(learnerId, mission.rewardXp);
+  const awardedXp = await awardXp(learnerId, mission.rewardXp, { kind: "mission", id: missionRow.id });
   await addActivity(learnerId, "beginner_module", "Beginner Build Lab mission cleared", `Completed ${mission.title}.`, { module: "beginner-build", mission_id: mission.id, score: check.score });
   const newAwards = await reconcileVerifiedAwards(learnerId);
-  return { completed: true, alreadyCompleted: false, score: check.score, missing: [] as string[], awardedXp: mission.rewardXp, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
+  return { completed: true, alreadyCompleted: false, score: check.score, missing: [] as string[], awardedXp, newAwards: newAwards.map(award => ({ awardSlug: award.slug, name: award.name })) };
 }
