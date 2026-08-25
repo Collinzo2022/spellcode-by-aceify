@@ -8,6 +8,7 @@ type LessonRow = { id: string; slug: string; title: string; difficulty: "Beginne
 type DailyTaskRow = { id: string; task_date: string; title: string; description: string; difficulty: "Beginner" | "Intermediate" | "Advanced"; xp_reward: number; estimated_minutes: number; task_content: { prompt?: string; required?: string[]; hint?: string; lesson_slug?: string; track_slug?: string }; required_plan_code: string | null; lesson_id: string | null };
 type ProfileRow = { id: string; xp: number; current_streak: number; longest_streak: number; last_learning_at: string | null };
 type ProjectRow = { id: string; slug: string };
+type MissionRow = { id: string; slug: string };
 type CompletionRow = { state: "not_started" | "in_progress" | "completed"; xp_earned: number; completed_at: string | null };
 
 const DAY_MS = 86_400_000;
@@ -49,7 +50,15 @@ export async function ensureSupabaseCurriculum() {
   const projectPayload = PROJECTS.map(project => ({ slug: project.id, title: project.title, description: project.description, track_id: trackMap.get(project.track.toLowerCase())?.id ?? null, difficulty: project.difficulty, duration_minutes: durationMinutes(project.duration, 60), is_published: true }));
   await supabaseAdminRequest("/rest/v1/projects?on_conflict=slug", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(projectPayload) });
   const storedProjects = await supabaseAdminRequest<ProjectRow[]>("/rest/v1/projects?select=id,slug");
-  return { tracks: trackMap, lessons: storedLessons, projects: storedProjects };
+  // Missions are seeded for the same reason Projects are: a Mission Completion
+  // records which Mission it was, and cannot reference a row that never existed.
+  // Only the slug and title are stored - a Mission's instruction, starter code
+  // and required fragments are curriculum, read from shared/beginnerModule.ts.
+  // The order of the three is the order of BEGINNER_BUILD_MISSIONS and is not
+  // stored: it is curriculum, and no query sorts by it.
+  await supabaseAdminRequest("/rest/v1/missions?on_conflict=slug", { method: "POST", headers: { Prefer: "resolution=merge-duplicates" }, body: JSON.stringify(BEGINNER_BUILD_MISSIONS.map(mission => ({ slug: mission.id, title: mission.title }))) });
+  const storedMissions = await supabaseAdminRequest<MissionRow[]>("/rest/v1/missions?select=id,slug");
+  return { tracks: trackMap, lessons: storedLessons, projects: storedProjects, missions: storedMissions };
 }
 
 /**
@@ -129,20 +138,35 @@ async function recordEarnedAward(learnerId: string, slug: string) {
   return created.length ? award : undefined;
 }
 
+/**
+ * The Missions a Learner has cleared, as the ids of the Missions themselves.
+ *
+ * One reader for two questions - which Missions are open to a Learner, and
+ * whether they have earned Launchpad - so the two can never drift onto
+ * different evidence. They were counted out of the Activity Feed before ticket
+ * 05, which ADR 0003 makes presentational and prunable.
+ */
+async function clearedMissionIds(learnerId: string) {
+  const completions = await supabaseAdminRequest<Array<{ mission_id: string }>>(`/rest/v1/mission_completions?user_id=eq.${encodeURIComponent(learnerId)}&select=mission_id`);
+  // A Set rather than a count: the unique constraint on (user_id, mission_id)
+  // already makes a duplicate impossible, so this is a second lock on the same
+  // door rather than the only one.
+  return new Set(completions.map(item => item.mission_id));
+}
+
 async function getAwardSnapshot(learnerId: string): Promise<AwardMetricSnapshot> {
   const { lessons } = await ensureSupabaseCurriculum();
-  const [profiles, progress, passedChallenges, dailyCompletions, projectCompletions, beginnerModuleActivity] = await Promise.all([
+  const [profiles, progress, passedChallenges, dailyCompletions, projectCompletions, clearedMissions] = await Promise.all([
     supabaseAdminRequest<ProfileRow[]>(`/rest/v1/profiles?id=eq.${encodeURIComponent(learnerId)}&select=id,xp,current_streak,longest_streak,last_learning_at&limit=1`),
     supabaseAdminRequest<Array<{ lesson_id: string }>>(`/rest/v1/lesson_progress?user_id=eq.${encodeURIComponent(learnerId)}&state=eq.completed&select=lesson_id`),
     supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/challenge_attempts?user_id=eq.${encodeURIComponent(learnerId)}&passed=eq.true&select=id`),
     supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/daily_task_completions?user_id=eq.${encodeURIComponent(learnerId)}&state=eq.completed&select=id`),
     supabaseAdminRequest<Array<{ project_id: string }>>(`/rest/v1/project_progress?user_id=eq.${encodeURIComponent(learnerId)}&completed_at=not.is.null&select=project_id`),
-    supabaseAdminRequest<Array<{ id: string; metadata: { module?: string; mission_id?: string } }>>(`/rest/v1/activity_events?user_id=eq.${encodeURIComponent(learnerId)}&event_type=eq.beginner_module&select=id,metadata`),
+    clearedMissionIds(learnerId),
   ]);
   const lessonById = new Map(lessons.map(lesson => [lesson.id, lesson.slug]));
   const profile = profiles[0] ?? { xp: 0, current_streak: 0 };
-  const uniqueBeginnerMissions = new Set(beginnerModuleActivity.filter(item => item.metadata?.module === "beginner-build").map(item => item.metadata?.mission_id).filter((missionId): missionId is string => Boolean(missionId)));
-  return { xp: profile.xp, currentStreak: profile.current_streak, completedLessonSlugs: progress.map(item => lessonById.get(item.lesson_id)).filter((slug): slug is string => Boolean(slug)), passedChallengeCount: passedChallenges.length, completedDailyCount: dailyCompletions.length, completedProjectCount: projectCompletions.length, completedBeginnerBuildMissionCount: uniqueBeginnerMissions.size };
+  return { xp: profile.xp, currentStreak: profile.current_streak, completedLessonSlugs: progress.map(item => lessonById.get(item.lesson_id)).filter((slug): slug is string => Boolean(slug)), passedChallengeCount: passedChallenges.length, completedDailyCount: dailyCompletions.length, completedProjectCount: projectCompletions.length, completedBeginnerBuildMissionCount: clearedMissions.size };
 }
 
 async function reconcileVerifiedAwards(learnerId: string, providedSnapshot?: AwardMetricSnapshot) {
@@ -255,11 +279,20 @@ export async function completeBeginnerBuildMission(learnerId: string, input: { m
   if (!mission) throw new Error("This beginner build mission is not available.");
   const check = checkBeginnerBuildMission(mission, input.code);
   if (!check.passed) return { completed: false, score: check.score, missing: check.missing, awardedXp: 0, newAwards: [] as Array<{ awardSlug: string; name: string }> };
-  const existingEvents = await supabaseAdminRequest<Array<{ id: string; metadata: { module?: string; mission_id?: string } }>>(`/rest/v1/activity_events?user_id=eq.${encodeURIComponent(learnerId)}&event_type=eq.beginner_module&select=id,metadata`);
-  const completedMissionIds = new Set(existingEvents.filter(item => item.metadata?.module === "beginner-build").map(item => item.metadata?.mission_id).filter((id): id is string => Boolean(id)));
-  const requiredPrevious = BEGINNER_BUILD_MISSIONS.slice(0, missionIndex).map(item => item.id);
-  if (requiredPrevious.some(id => !completedMissionIds.has(id))) throw new Error("Clear the earlier Beginner Build Lab mission before opening this one.");
-  if (completedMissionIds.has(mission.id)) return { completed: true, alreadyCompleted: true, score: 100, missing: [] as string[], awardedXp: 0, newAwards: [] as Array<{ awardSlug: string; name: string }> };
+  const { missions } = await ensureSupabaseCurriculum();
+  const missionRow = missions.find(row => row.slug === mission.id);
+  if (!missionRow) throw new Error("This beginner build mission is not available.");
+  const cleared = await clearedMissionIds(learnerId);
+  const missionIdBySlug = new Map(missions.map(row => [row.slug, row.id]));
+  const requiredPrevious = BEGINNER_BUILD_MISSIONS.slice(0, missionIndex).map(item => missionIdBySlug.get(item.id));
+  if (requiredPrevious.some(id => !id || !cleared.has(id))) throw new Error("Clear the earlier Beginner Build Lab mission before opening this one.");
+  if (cleared.has(missionRow.id)) return { completed: true, alreadyCompleted: true, score: 100, missing: [] as string[], awardedXp: 0, newAwards: [] as Array<{ awardSlug: string; name: string }> };
+  // The Completion record, unique per Learner per Mission, is the evidence the
+  // Launchpad award reads. The Activity Feed entry below is presentational only
+  // (ADR 0003) and nothing is ever counted from it.
+  // Ignore rather than merge: a second clearing must not overwrite the date the
+  // Learner first cleared this Mission. That date is the Completion.
+  await supabaseAdminRequest("/rest/v1/mission_completions?on_conflict=user_id,mission_id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates" }, body: JSON.stringify({ user_id: learnerId, mission_id: missionRow.id, completed_at: new Date().toISOString() }) });
   await addXp(learnerId, mission.rewardXp);
   await addActivity(learnerId, "beginner_module", "Beginner Build Lab mission cleared", `Completed ${mission.title}.`, { module: "beginner-build", mission_id: mission.id, score: check.score });
   const newAwards = await reconcileVerifiedAwards(learnerId);

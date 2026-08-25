@@ -1,0 +1,24 @@
+-- SpellCode by Aceify: reverse of supabase_mission_completion_migration.sql.
+--
+-- There is deliberately nothing to run for an application rollback.
+--
+-- The pre-ticket-05 build counted Mission completions out of the Activity Feed
+-- and never read public.missions or public.mission_completions. The migration
+-- left the feed untouched, so rolling the application back needs no schema or
+-- data change: the old build simply ignores both tables and goes on counting
+-- what it always counted.
+--
+-- Do not drop the tables to "clean up" after a rollback. A Learner who cleared a
+-- Mission while the new build was live has a Completion here and only a feed row
+-- there; dropping the table discards the record and, if the feed is ever pruned,
+-- the fact with it. Leaving the tables in place costs nothing.
+--
+-- If they must be removed - the feature abandoned rather than rolled back, and
+-- the Activity Feed known to be intact - then, in this order:
+--   drop table public.mission_completions;
+--   drop table public.missions;
+--
+-- If one Learner's records must be removed for an unrelated reason, do it by
+-- Learner rather than in bulk, and know that it revokes evidence: their
+-- Beginner Build Lab progress resets and cleared Missions reopen.
+--   delete from public.mission_completions where user_id = '<learner id>';

@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import { CURRICULUM, PROJECTS } from "../../shared/curriculum";
+import { BEGINNER_BUILD_MISSIONS } from "../../shared/beginnerModule";
 
 /**
  * Test double for the single Supabase REST choke point.
@@ -46,7 +47,10 @@ function curriculumRows() {
   );
   // Only what the service reads back: a Completion needs the Project's id.
   const projects = PROJECTS.map(project => ({ id: `project-${project.id}`, slug: project.id }));
-  return { tracks, lessons, projects };
+  // Missions are seeded for the same reason Projects are: a Mission Completion
+  // records which Mission it was, and cannot reference a row that never existed.
+  const missions = BEGINNER_BUILD_MISSIONS.map(mission => ({ id: `mission-${mission.id}`, slug: mission.id, title: mission.title }));
+  return { tracks, lessons, projects, missions };
 }
 
 /**
@@ -66,7 +70,7 @@ function prefersRepresentation(init: RequestInit) {
 }
 
 export function createSupabaseStub(learnerId: string) {
-  const { tracks, lessons, projects } = curriculumRows();
+  const { tracks, lessons, projects, missions } = curriculumRows();
   const staged: StagedRead[] = [];
   const writes: RecordedWrite[] = [];
 
@@ -89,6 +93,7 @@ export function createSupabaseStub(learnerId: string) {
     if (tableIs(path, "tracks")) return tracks;
     if (tableIs(path, "lessons")) return lessons;
     if (tableIs(path, "projects")) return projects;
+    if (tableIs(path, "missions")) return missions;
 
     // Every other table is empty unless a test stages it.
     return [];
@@ -98,6 +103,7 @@ export function createSupabaseStub(learnerId: string) {
     request,
     lessons,
     projects,
+    missions,
 
     /** Stage rows to be returned by reads whose path matches. Latest wins. */
     stageRows(match: RegExp, rows: unknown) {
