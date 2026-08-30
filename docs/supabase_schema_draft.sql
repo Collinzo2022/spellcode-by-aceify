@@ -155,6 +155,17 @@ create table public.missions (
   created_at timestamptz not null default now()
 );
 
+-- The three Beginner Build Lab Missions, seeded here rather than by the
+-- application: a Mission Completion is written the moment a Learner clears a
+-- Mission, so the catalog must exist before the first request, not after it.
+-- Ticket 05 made the same choice in supabase_mission_completion_migration.sql
+-- and these rows must stay identical to the ones it seeds.
+insert into public.missions (slug, title) values
+  ('welcome', 'Make a page say hello'),
+  ('voice', 'Give it a human voice'),
+  ('action', 'Invite an action')
+on conflict (slug) do update set title = excluded.title;
+
 create table public.mission_completions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
