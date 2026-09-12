@@ -50,7 +50,7 @@ export async function initializeCheckout(input: { userId: string; email: string;
   const reference = `spellcode-${crypto.randomUUID()}`;
   const result = await paystackRequest<{ authorization_url: string; access_code: string; reference: string }>("/transaction/initialize", { method: "POST", body: JSON.stringify(buildPaystackInitializePayload({ email: input.email, reference, plan, callbackUrl: input.callbackUrl, userId: input.userId })) });
   const [payment] = await supabaseAdminRequest<PaymentRecord[]>("/rest/v1/payment_transactions", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ user_id: input.userId, plan_id: plan.id, paystack_reference: result.reference, amount_minor: plan.amount_minor, currency: plan.currency, status: "initialized", provider_payload: { access_code: result.access_code, plan_code: plan.code } }) });
-  await supabaseAdminRequest("/rest/v1/subscriptions", { method: "POST", body: JSON.stringify({ user_id: input.userId, plan_id: plan.id, status: "pending", installments_due: plan.max_installments ?? 1, installments_paid: 0, entitlement_snapshot: { plan_code: plan.code } }) });
+  await supabaseAdminRequest("/rest/v1/subscriptions", { method: "POST", body: JSON.stringify({ user_id: input.userId, plan_id: plan.id, status: "pending", installments_due: plan.max_installments ?? 1, installments_paid: 0, plan_snapshot: { plan_code: plan.code } }) });
   return { authorizationUrl: result.authorization_url, reference: result.reference, paymentId: payment.id };
 }
 
@@ -78,7 +78,7 @@ async function recordVerifiedPayment(payment: PaymentRecord, transaction: { id: 
     const installmentsPaid = Math.min(installmentsDue, (subscription?.installments_paid ?? 0) + 1);
     const patch = { status: "active", paystack_customer_code: transaction.customer?.customer_code ?? null, current_period_start: new Date().toISOString(), installments_paid: installmentsPaid, installments_due: installmentsDue, last_payment_at: transaction.paid_at ?? new Date().toISOString(), updated_at: new Date().toISOString() };
     if (subscription) await supabaseAdminRequest(`/rest/v1/subscriptions?id=eq.${subscription.id}`, { method: "PATCH", body: JSON.stringify(patch) });
-    else await supabaseAdminRequest("/rest/v1/subscriptions", { method: "POST", body: JSON.stringify({ user_id: payment.user_id, plan_id: payment.plan_id, ...patch, entitlement_snapshot: { source: "paystack" } }) });
+    else await supabaseAdminRequest("/rest/v1/subscriptions", { method: "POST", body: JSON.stringify({ user_id: payment.user_id, plan_id: payment.plan_id, ...patch, plan_snapshot: { source: "paystack" } }) });
   }
 }
 

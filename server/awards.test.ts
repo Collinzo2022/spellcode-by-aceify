@@ -3,7 +3,8 @@ import { awardProgress, AWARD_CATALOG, verifiedAwards } from "../shared/awards";
 import { BEGINNER_BUILD_MISSIONS, checkBeginnerBuildMission } from "../shared/beginnerModule";
 import * as awardsModule from "../shared/awards";
 import * as curriculumModule from "../shared/curriculum";
-import * as progressModule from "../shared/progress";
+import * as beginnerModule from "../shared/beginnerModule";
+import * as fullAccessModule from "../shared/fullAccess";
 
 const emptySnapshot = { xp: 0, currentStreak: 0, completedLessonSlugs: [], passedChallengeCount: 0, completedDailyCount: 0, completedProjectCount: 0, completedBeginnerBuildMissionCount: 0 };
 
@@ -32,7 +33,11 @@ describe("verified SpellCode awards", () => {
   it("exports no shared identifier named with retired recognition vocabulary", () => {
     // Copy alone is not enough of a guard: an `AWARD_CATALOG as ACHIEVEMENTS`
     // re-export survived the ticket 03 sweep because nothing looked at names.
-    const exported = [awardsModule, curriculumModule, progressModule].flatMap(module => Object.keys(module));
+    // `shared/progress.ts` was one of the modules watched here until it was
+    // deleted as dead code; the two modules that replace it in this list are
+    // the remaining shared ones a recognition identifier could be added to,
+    // so the guard covers more surface than it did before, not less.
+    const exported = [awardsModule, curriculumModule, beginnerModule, fullAccessModule].flatMap(module => Object.keys(module));
 
     expect(exported.filter(name => /achievement|badge/i.test(name))).toEqual([]);
   });

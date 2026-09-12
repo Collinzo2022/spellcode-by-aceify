@@ -220,10 +220,12 @@ async function verifiedXpTotal(learnerId: string) {
  * on every award, but a cache that can drift and cannot be checked is how XP
  * got into trouble in the first place. This is the check.
  *
- * It has no caller in production: there is no admin route to hang it on, and
- * inventing one is not this ticket's business. It is here to be called - from a
- * script, a route, or a test - and the same check exists as SQL in the
- * migration's verification block for whoever is holding a psql prompt instead.
+ * Reached by an operator through `learning.adminReconcileXp`, which is admin
+ * gated. It was written without a caller and stayed unreachable for two
+ * tickets; the spec asks for divergence to be both detectable and correctable
+ * by an operator, and a capability nothing can call does not answer that. The
+ * same check exists as SQL in the ticket 09 migration's verification block for
+ * whoever is holding a psql prompt instead.
  */
 export async function reconcileXpTotal(learnerId: string) {
   const [profiles, ledger] = await Promise.all([

@@ -13,7 +13,7 @@ alter table public.subscriptions
   add column if not exists installments_paid smallint not null default 0 check (installments_paid >= 0),
   add column if not exists installments_due smallint,
   add column if not exists last_payment_at timestamptz,
-  add column if not exists entitlement_snapshot jsonb not null default '{}'::jsonb;
+  add column if not exists plan_snapshot jsonb not null default '{}'::jsonb;
 
 create table if not exists public.daily_tasks (
   id uuid primary key default gen_random_uuid(),

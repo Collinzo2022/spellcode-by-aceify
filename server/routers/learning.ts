@@ -1,8 +1,8 @@
 import { learnerIdOf } from "../learner";
 import { CURRICULUM, PROJECTS } from "@shared/curriculum";
 import { z } from "zod";
-import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
-import { completeBeginnerBuildMission, completeDailyLearningTask, completeSupabaseLesson, enrollSupabaseTrack, getDailyLearningOverview, getSupabaseLearnerDashboard, verifyFullAccess, recordSupabaseChallengeAttempt, recordSupabaseProjectCompletion } from "../supabaseLearning";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "../_core/trpc";
+import { completeBeginnerBuildMission, completeDailyLearningTask, completeSupabaseLesson, enrollSupabaseTrack, getDailyLearningOverview, getSupabaseLearnerDashboard, verifyFullAccess, recordSupabaseChallengeAttempt, recordSupabaseProjectCompletion, reconcileXpTotal } from "../supabaseLearning";
 import { lessonRequiresFullAccess } from "../../shared/fullAccess";
 
 const lessonInput = z.object({
@@ -46,4 +46,20 @@ export const learningRouter = router({
   completeProject: protectedProcedure
     .input(z.object({ projectId: z.string().min(1).max(80), title: z.string().min(1).max(120) }))
     .mutation(async ({ ctx, input }) => recordSupabaseProjectCompletion(learnerIdOf(ctx.user), input)),
+  /**
+   * Detect and correct a diverged XP cache, for an operator (spec stories 23
+   * and 24).
+   *
+   * A mutation rather than a query because it writes when it finds divergence,
+   * and it names the Learner explicitly rather than reading one from the
+   * session: an operator reconciles somebody else's total, never their own.
+   *
+   * Admin-gated for the same reason it is not a query. It cannot invent a
+   * number - the correction is always the ledger's own sum - so the worst a
+   * caller can do is force a recompute. That is still an operator action, and
+   * the Learner id it takes is enough to enumerate accounts with.
+   */
+  adminReconcileXp: adminProcedure
+    .input(z.object({ learnerId: z.string().min(1).max(80) }))
+    .mutation(async ({ input }) => reconcileXpTotal(input.learnerId)),
 });
