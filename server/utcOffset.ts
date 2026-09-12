@@ -12,7 +12,7 @@ import { parseUtcOffsetMinutes, UTC_OFFSET_HEADER } from "../shared/utcOffset";
  *
  * Mounted on the two surfaces our own clients call, not on all of `/api`: the
  * Paystack webhook is not party to this contract, and a stray header on an
- * incoming payment must never cost a Learner their entitlement.
+ * incoming payment must never cost a Learner their Full Access.
  */
 export function registerUtcOffsetContract(app: Express) {
   app.use(["/api/trpc", "/api/mobile"], (req: Request, res: Response, next: NextFunction) => {

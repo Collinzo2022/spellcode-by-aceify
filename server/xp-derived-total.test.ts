@@ -10,10 +10,10 @@ const { supabase } = vi.hoisted(() => ({
 vi.mock("./supabase", () => ({ supabaseAdminRequest: (path: string, init?: RequestInit) => supabase.current!.request(path, init) }));
 
 import { learningRouter } from "./routers/learning";
-import { reconcileXpTotal } from "./supabaseLearning";
 
 const LEARNER_ID = "learner-1";
 const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: {}, res: {} } as any;
+const adminCtx = { user: makeSessionUser({ learnerId: "operator-1", name: "Operator", email: "operator@example.com", role: "admin" }), req: {}, res: {} } as any;
 
 const LEDGER_TOTAL = new RegExp(`^/rest/v1/learner_xp_totals\\?user_id=eq\\.${LEARNER_ID}`);
 const PROFILE = new RegExp(`^/rest/v1/profiles\\?id=eq\\.${LEARNER_ID}`);
@@ -135,13 +135,17 @@ describe("every surface a Learner sees their XP on", () => {
  * Divergence has to be both detectable and correctable, and correctable
  * *without inventing a number*: the correction is the ledger's own sum, never
  * an adjustment or a guess.
+ *
+ * Driven through `learning.adminReconcileXp` rather than by calling the
+ * function directly, because that is the only way an operator can reach it and
+ * a test that skips the route cannot see the gate on it.
  */
 describe("reconciling a diverged total", () => {
   it("reports the divergence and corrects the cache to the ledger", async () => {
     stageCachedTotal(120);
     stageLedgerTotal(275);
 
-    const result = await reconcileXpTotal(LEARNER_ID);
+    const result = await learningRouter.createCaller(adminCtx).adminReconcileXp({ learnerId: LEARNER_ID });
 
     expect(result).toEqual({ cached: 120, ledger: 275, diverged: true });
     expect(xpRecomputes()).toHaveLength(1);
@@ -152,7 +156,7 @@ describe("reconciling a diverged total", () => {
     stageCachedTotal(275);
     stageLedgerTotal(275);
 
-    const result = await reconcileXpTotal(LEARNER_ID);
+    const result = await learningRouter.createCaller(adminCtx).adminReconcileXp({ learnerId: LEARNER_ID });
 
     expect(result).toEqual({ cached: 275, ledger: 275, diverged: false });
     expect(xpWrites(stub).total).toBe(0);
@@ -164,9 +168,22 @@ describe("reconciling a diverged total", () => {
     stageCachedTotal(900);
     stageLedgerTotal(275);
 
-    const result = await reconcileXpTotal(LEARNER_ID);
+    const result = await learningRouter.createCaller(adminCtx).adminReconcileXp({ learnerId: LEARNER_ID });
 
     expect(result).toMatchObject({ diverged: true });
     expect(xpRecomputes()).toHaveLength(1);
+  });
+
+  it("is refused to a Learner who is not an administrator, and writes nothing", async () => {
+    stageCachedTotal(900);
+    stageLedgerTotal(275);
+
+    await expect(learningRouter.createCaller(ctx).adminReconcileXp({ learnerId: LEARNER_ID })).rejects.toThrow();
+
+    expect(xpWrites(stub).total).toBe(0);
+  });
+
+  it("is refused to a caller with no session at all", async () => {
+    await expect(learningRouter.createCaller({ user: null, req: {}, res: {} } as any).adminReconcileXp({ learnerId: LEARNER_ID })).rejects.toThrow();
   });
 });
