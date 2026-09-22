@@ -1,8 +1,7 @@
 import { learnerIdOf } from "./learner";
 import type { Express, Request, Response } from "express";
 import { completeDailyLearningTask, completeSupabaseLesson, getDailyLearningOverview, verifyFullAccess } from "./supabaseLearning";
-import { getSupabaseSessionUser } from "./supabase";
-import { supabaseAdminRequest } from "./supabase";
+import { getSupabasePublicConfig, getSupabaseSessionUser, supabaseAdminRequest } from "./supabase";
 import { CURRICULUM } from "../shared/curriculum";
 
 async function mobileUser(req: Request) {
@@ -12,6 +11,13 @@ async function mobileUser(req: Request) {
 }
 
 export function registerMobileRoutes(app: Express) {
+  // The public Supabase settings, served from the same source as the web's
+  // auth.supabaseConfig so the two cannot drift. Asked for before anyone can
+  // have signed in, so it takes no bearer token. The anon key is public by
+  // design; the service-role key and the Paystack secret must never appear here.
+  app.get("/api/mobile/config", (_req: Request, res: Response) => {
+    try { const { url, anonKey } = getSupabasePublicConfig(); return res.json({ supabaseUrl: url, supabaseAnonKey: anonKey }); } catch { return res.status(503).json({ error: "Supabase configuration is unavailable" }); }
+  });
   app.get("/api/mobile/curriculum", (_req: Request, res: Response) => res.json({ tracks: CURRICULUM }));
   app.get("/api/mobile/daily", async (req: Request, res: Response) => {
     const user = await mobileUser(req);

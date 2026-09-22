@@ -92,8 +92,8 @@ Secrets belong in the managed backend environment, never in the repository or Ve
 
 | Variable | Required by | Purpose |
 |---|---|---|
-| `SUPABASE_URL` | Backend | Supabase project URL. |
-| `SUPABASE_ANON_KEY` | Backend | Validates authenticated learner bearer sessions. |
+| `SUPABASE_URL` | Backend | Supabase project URL. Served to clients at runtime with the anon key. |
+| `SUPABASE_ANON_KEY` | Backend | Validates authenticated learner bearer sessions. Public by design: the web fetches it from `auth.supabaseConfig`, so changing project or key needs no web rebuild. `GET /api/mobile/config` serves the same to Android, but the released APK predates that route and has the key built in. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Backend | Performs server-authorized learning, billing, and award operations. |
 | `PAYSTACK_PUBLIC_KEY` | Frontend configuration | Initializes the payment experience. |
 | `PAYSTACK_SECRET_KEY` | Backend | Creates/verifies payments and validates webhooks. |
