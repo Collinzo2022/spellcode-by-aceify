@@ -3,6 +3,7 @@ import { protectedProcedure, router } from "../_core/trpc";
 import { supabaseAdminRequest } from "../supabase";
 import { verifyFullAccess } from "../supabaseLearning";
 import { storagePut } from "../storage";
+import { assertAvailable } from "../availability";
 import { canIssueCertificate } from "../../shared/fullAccess";
 
 function escapeHtml(value: string) { return value.replace(/[&<>'"]/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character] ?? character); }
@@ -25,6 +26,7 @@ export const certificatesRouter = router({
     return { hasFullAccess: true, ...progress, certificate: records[0] ?? null };
   }),
   issue: protectedProcedure.mutation(async ({ ctx }) => {
+    assertAvailable("certificates");
     const learnerId = learnerIdOf(ctx.user);
     const access = await verifyFullAccess(learnerId);
     if (!access.hasFullAccess) throw new Error("Certificates are available with Full Access.");

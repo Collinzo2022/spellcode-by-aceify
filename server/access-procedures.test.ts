@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSupabaseStub } from "./testing/supabaseStub";
+import { forgeOff, forgeOn, restoreForge } from "./testing/forge";
 import { makeSessionUser } from "./learner";
 import { expectNoFeatureArray } from "./testing/assertions";
 
@@ -26,12 +27,19 @@ const COMPLETED_LESSONS = new RegExp(`^/rest/v1/lesson_progress\\?user_id=eq\\.$
 
 let stub: ReturnType<typeof createSupabaseStub>;
 
+// The tutor, Project publishing and certificates refuse to run without Forge
+// (ticket 15). Every test here except the "without Forge" block configures it,
+// so the Full Access gate is the only thing they measure; storagePut and
+// invokeLLM are mocked, so nothing reaches Forge regardless.
 beforeEach(() => {
   stub = createSupabaseStub(LEARNER_ID);
   supabase.current = stub;
   storagePut.mockReset();
   invokeLLM.mockReset();
+  forgeOn();
 });
+
+afterEach(restoreForge);
 
 describe("the learner dashboard", () => {
   it("reports the signed-in learner's own stored progress", async () => {
@@ -151,6 +159,54 @@ describe("Full Access enforcement for a Learner who holds it", () => {
 
     await expect(certificatesRouter.createCaller(ctx).issue()).resolves.toEqual({ url: "https://example.test/original", alreadyIssued: true });
     expect(stub.writesTo("certificates")).toHaveLength(0);
+  });
+});
+
+/**
+ * Ticket 15: without Forge the three features it backs say they are
+ * unavailable, as a SERVICE_UNAVAILABLE error (503) rather than the 500 a
+ * missing Forge configuration used to surface as.
+ *
+ * Unavailable is checked before Full Access, so no Learner is told to buy
+ * access to a feature that cannot run - the no-Full-Access arms below are what
+ * hold that ordering.
+ */
+describe("without Forge", () => {
+  beforeEach(forgeOff);
+
+  const unavailable = { code: "SERVICE_UNAVAILABLE", message: expect.stringMatching(/temporarily unavailable/) };
+
+  describe.each([
+    ["a Learner without Full Access", () => undefined],
+    ["a Learner who holds Full Access", () => stub.grantFullAccess()],
+  ])("for %s", (_label, arrange) => {
+    beforeEach(() => arrange());
+
+    it("refuses project publishing as unavailable and stores nothing", async () => {
+      await expect(projectsRouter.createCaller(ctx).publish({ projectSlug: "landing-page", title: "Landing page", html: "<main />", css: "", javascript: "" })).rejects.toMatchObject(unavailable);
+      expect(storagePut).not.toHaveBeenCalled();
+      expect(stub.writesTo("published_projects")).toHaveLength(0);
+    });
+
+    it("refuses tutor questions as unavailable and never calls the model", async () => {
+      await expect(tutorRouter.createCaller(ctx).ask({ messages: [{ role: "user", content: "Explain CSS" }] })).rejects.toMatchObject(unavailable);
+      expect(invokeLLM).not.toHaveBeenCalled();
+    });
+
+    it("refuses certificate issuance as unavailable and records nothing", async () => {
+      stub.stageRows(COMPLETED_LESSONS, stub.lessons.map(lesson => ({ lesson_id: lesson.id })));
+
+      await expect(certificatesRouter.createCaller(ctx).issue()).rejects.toMatchObject(unavailable);
+      expect(storagePut).not.toHaveBeenCalled();
+      expect(stub.writesTo("certificates")).toHaveLength(0);
+    });
+  });
+
+  it("still reports certificate progress, which never needed Forge", async () => {
+    stub.grantFullAccess();
+    stub.stageRows(COMPLETED_LESSONS, [{ lesson_id: stub.lessons[0]!.id }]);
+
+    await expect(certificatesRouter.createCaller(ctx).status()).resolves.toMatchObject({ hasFullAccess: true, completedLessons: 1 });
   });
 });
 

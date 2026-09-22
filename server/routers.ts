@@ -8,6 +8,7 @@ import { billingRouter } from "./routers/billing";
 import { tutorRouter } from "./routers/tutor";
 import { certificatesRouter } from "./routers/certificates";
 import { projectsRouter } from "./routers/projects";
+import { availabilityRouter } from "./routers/availability";
 
 export const appRouter = router({
   system: systemRouter,
@@ -25,6 +26,7 @@ export const appRouter = router({
   tutor: tutorRouter,
   certificates: certificatesRouter,
   projects: projectsRouter,
+  availability: availabilityRouter,
 });
 
 export type AppRouter = typeof appRouter;

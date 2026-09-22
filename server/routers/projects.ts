@@ -1,6 +1,7 @@
 import { learnerIdOf } from "../learner";
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
+import { assertAvailable } from "../availability";
 import { storagePut } from "../storage";
 import { supabaseAdminRequest } from "../supabase";
 import { verifyFullAccess } from "../supabaseLearning";
@@ -12,6 +13,7 @@ function documentSource(input: { html: string; css: string; javascript: string }
 
 export const projectsRouter = router({
   publish: protectedProcedure.input(z.object({ projectSlug: z.string().min(1).max(80), title: z.string().min(1).max(120), html: z.string().min(1).max(80_000), css: z.string().max(80_000), javascript: z.string().max(80_000) })).mutation(async ({ ctx, input }) => {
+    assertAvailable("projectPublishing");
     const learnerId = learnerIdOf(ctx.user);
     const access = await verifyFullAccess(learnerId);
     if (!access.hasFullAccess) throw new Error("Project publishing is available with Full Access.");

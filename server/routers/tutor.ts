@@ -2,12 +2,14 @@ import { learnerIdOf } from "../learner";
 import { z } from "zod";
 import { invokeLLM } from "../_core/llm";
 import { protectedProcedure, router } from "../_core/trpc";
+import { assertAvailable } from "../availability";
 import { verifyFullAccess } from "../supabaseLearning";
 
 const tutorMessage = z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(6_000) });
 
 export const tutorRouter = router({
   ask: protectedProcedure.input(z.object({ messages: z.array(tutorMessage).min(1).max(12) })).mutation(async ({ ctx, input }) => {
+    assertAvailable("tutor");
     const access = await verifyFullAccess(learnerIdOf(ctx.user));
     if (!access.hasFullAccess) throw new Error("The AI tutor is available with Full Access.");
     const response = await invokeLLM({
