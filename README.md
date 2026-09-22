@@ -51,7 +51,7 @@ The active production data path is **Supabase only**. Supabase Auth provides the
 | Learning state | Supabase Postgres tables for progress, challenges, daily tasks, activities, and awards. |
 | Payments | Paystack checkout, server-side verification, entitlement enforcement, and idempotent webhook processing. |
 | Web deployment | Vercel serves the static Vite frontend and proxies `/api/*` to the Manus-hosted Express backend. |
-| Mobile | Separate Expo/React Native Android companion app using the same production API. |
+| Mobile | Separate Expo/React Native Android companion app using the same production API. **Unsupported until a new release ships:** nobody on the project can currently build or sign one. What that release must do is in [docs/android_handoff.md](docs/android_handoff.md). |
 
 The detailed production model is available in [docs/production_architecture.md](docs/production_architecture.md).
 
