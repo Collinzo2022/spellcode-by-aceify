@@ -1,9 +1,16 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSupabaseSessionUser } from "./supabase";
 import { learnerIdOf } from "./learner";
+import { restoreSupabase, supabaseOn } from "./testing/supabaseConfig";
 
 describe("Supabase learner profile provisioning", () => {
-  afterEach(() => vi.unstubAllGlobals());
+  // It refuses to run until a Supabase project is configured; fetch is stubbed,
+  // so a made-up one will do.
+  beforeEach(supabaseOn);
+  afterEach(() => {
+    restoreSupabase();
+    vi.unstubAllGlobals();
+  });
 
   it("creates a Supabase learner profile when an authenticated user has no profile row", async () => {
     const fetchMock = vi.fn()
