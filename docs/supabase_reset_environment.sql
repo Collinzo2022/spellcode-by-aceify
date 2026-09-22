@@ -79,6 +79,14 @@ drop table if exists public.daily_tasks cascade;
 drop table if exists public.published_projects cascade;
 drop table if exists public.certificates cascade;
 
+-- Not objects the replay order creates: these are the award tables under their
+-- pre-ticket-04 names, still held by an environment that never ran
+-- supabase_award_rename_migration.sql. Dropping public.profiles above removes
+-- user_achievements' foreign key to it but neither table, so without these the
+-- first verify query at the bottom returns rows.
+drop table if exists public.user_achievements cascade;
+drop table if exists public.achievements cascade;
+
 -- Functions. recompute_learner_xp is the single-statement XP recompute (ADR 0002);
 -- the other three come from the bridge and daily/admin migrations.
 drop function if exists public.recompute_learner_xp(uuid) cascade;
