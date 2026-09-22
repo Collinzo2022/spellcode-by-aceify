@@ -121,3 +121,11 @@ skills-lock.json
 
 # Scratch work & planning (temporary specs/tickets)
 .scratch/
+
+# Local files kept beside the repo: installers, Office lock files, planning
+# spreadsheets and ad-hoc query exports
+*.exe
+~$*
+SpellCode_12_Week_Sprint_Plan.xlsx
+SpellCode_One_Week_Emergency_Sprint.xlsx
+Supabase Snippet Untitled query.csv
