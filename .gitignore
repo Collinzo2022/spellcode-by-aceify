@@ -129,3 +129,6 @@ skills-lock.json
 SpellCode_12_Week_Sprint_Plan.xlsx
 SpellCode_One_Week_Emergency_Sprint.xlsx
 Supabase Snippet Untitled query.csv
+
+# Account recovery codes: secrets, never committed
+paystack-recovery-codes.txt
