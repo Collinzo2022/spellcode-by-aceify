@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
+import { stubRequest } from "./testing/request";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSupabaseStub } from "./testing/supabaseStub";
@@ -15,7 +16,7 @@ vi.mock("./supabase", () => ({ supabaseAdminRequest: (path: string, init?: Reque
 import { learningRouter } from "./routers/learning";
 
 const LEARNER_ID = "learner-1";
-const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: {}, res: {} } as any;
+const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: stubRequest(), res: {} } as any;
 
 const FEED = new RegExp(`^/rest/v1/activity_events\\?user_id=eq\\.${LEARNER_ID}`);
 
@@ -38,7 +39,11 @@ let stub: ReturnType<typeof createSupabaseStub>;
  * of the evidence a Learner's standing rests on after tickets 05, 06 and 08.
  */
 function stageFullyVerifiedLearner() {
-  stub.stageRows(new RegExp(`^/rest/v1/profiles\\?id=eq\\.${LEARNER_ID}`), [{ id: LEARNER_ID, xp: 350, current_streak: 4, longest_streak: 9, last_learning_at: "2026-08-24T12:00:00.000Z" }]);
+  // `last_learning_day` is today, because this Learner's Streak is meant to be
+  // a live one: since ticket 11 a run is shown only while its last day is today
+  // or yesterday, so a fixed past date would read 0 and test nothing about the
+  // Activity Feed. The request stub sends no offset, so today is UTC's.
+  stub.stageRows(new RegExp(`^/rest/v1/profiles\\?id=eq\\.${LEARNER_ID}`), [{ id: LEARNER_ID, xp: 350, current_streak: 4, longest_streak: 9, last_learning_at: new Date().toISOString(), last_learning_day: new Date().toISOString().slice(0, 10) }]);
   stub.stageRows(new RegExp(`^/rest/v1/learner_xp_totals\\?user_id=eq\\.${LEARNER_ID}`), [{ user_id: LEARNER_ID, xp: 350 }]);
   stub.stageRows(new RegExp(`^/rest/v1/lesson_progress\\?user_id=eq\\.${LEARNER_ID}`), PATHFINDER_LESSONS.map((slug, index) => ({ id: `progress-${index}`, lesson_id: stub.lessons.find(lesson => lesson.slug === slug)!.id, state: "completed", xp_earned: 50 })));
   stub.stageRows(new RegExp(`^/rest/v1/challenge_attempts\\?user_id=eq\\.${LEARNER_ID}`), [{ id: "attempt-1" }]);

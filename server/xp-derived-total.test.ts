@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { stubRequest } from "./testing/request";
 import { createSupabaseStub } from "./testing/supabaseStub";
 import { makeSessionUser } from "./learner";
 import { xpWrites } from "./testing/xpLedger";
@@ -12,8 +13,8 @@ vi.mock("./supabase", () => ({ supabaseAdminRequest: (path: string, init?: Reque
 import { learningRouter } from "./routers/learning";
 
 const LEARNER_ID = "learner-1";
-const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: {}, res: {} } as any;
-const adminCtx = { user: makeSessionUser({ learnerId: "operator-1", name: "Operator", email: "operator@example.com", role: "admin" }), req: {}, res: {} } as any;
+const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: stubRequest(), res: {} } as any;
+const adminCtx = { user: makeSessionUser({ learnerId: "operator-1", name: "Operator", email: "operator@example.com", role: "admin" }), req: stubRequest(), res: {} } as any;
 
 const LEDGER_TOTAL = new RegExp(`^/rest/v1/learner_xp_totals\\?user_id=eq\\.${LEARNER_ID}`);
 const PROFILE = new RegExp(`^/rest/v1/profiles\\?id=eq\\.${LEARNER_ID}`);
@@ -184,6 +185,6 @@ describe("reconciling a diverged total", () => {
   });
 
   it("is refused to a caller with no session at all", async () => {
-    await expect(learningRouter.createCaller({ user: null, req: {}, res: {} } as any).adminReconcileXp({ learnerId: LEARNER_ID })).rejects.toThrow();
+    await expect(learningRouter.createCaller({ user: null, req: stubRequest(), res: {} } as any).adminReconcileXp({ learnerId: LEARNER_ID })).rejects.toThrow();
   });
 });

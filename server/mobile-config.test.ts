@@ -1,4 +1,5 @@
 import type express from "express";
+import { stubRequest } from "./testing/request";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ENV } from "./_core/env";
 import { createSpellCodeApp } from "./app";
@@ -114,7 +115,7 @@ describe("the mobile Supabase configuration", () => {
  * observes.
  */
 describe("the mobile and web Supabase configurations", () => {
-  const web = appRouter.createCaller({ user: null, req: {}, res: {} } as any).auth;
+  const web = appRouter.createCaller({ user: null, req: stubRequest(), res: {} } as any).auth;
 
   it("agree on the project URL and anon key", async () => {
     const { url, anonKey } = await web.supabaseConfig();

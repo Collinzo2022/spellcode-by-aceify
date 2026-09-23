@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { stubRequest } from "./testing/request";
 import { TRPCError } from "@trpc/server";
 import { assertAvailable, availability } from "./availability";
 import { availabilityRouter } from "./routers/availability";
@@ -64,7 +65,7 @@ describe("assertAvailable", () => {
 
 describe("the availability.status query", () => {
   // Public: it carries three booleans and nothing about any Learner.
-  const caller = availabilityRouter.createCaller({ user: null, req: {}, res: {} } as any);
+  const caller = availabilityRouter.createCaller({ user: null, req: stubRequest(), res: {} } as any);
 
   it("reports every capability unavailable without Forge", async () => {
     forgeOff();

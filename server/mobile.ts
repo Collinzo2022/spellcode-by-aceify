@@ -1,3 +1,4 @@
+import { offsetMinutesOf } from "./utcOffset";
 import { learnerIdOf } from "./learner";
 import type { Express, Request, Response } from "express";
 import { completeDailyLearningTask, completeSupabaseLesson, getDailyLearningOverview, verifyFullAccess } from "./supabaseLearning";
@@ -22,7 +23,7 @@ export function registerMobileRoutes(app: Express) {
   app.get("/api/mobile/daily", async (req: Request, res: Response) => {
     const user = await mobileUser(req);
     if (!user) return res.status(401).json({ error: "Authentication required" });
-    try { return res.json(await getDailyLearningOverview(learnerIdOf(user))); } catch (error) { return res.status(500).json({ error: error instanceof Error ? error.message : "Unable to load daily practice" }); }
+    try { return res.json(await getDailyLearningOverview(learnerIdOf(user), offsetMinutesOf(req))); } catch (error) { return res.status(500).json({ error: error instanceof Error ? error.message : "Unable to load daily practice" }); }
   });
   app.get("/api/mobile/access", async (req: Request, res: Response) => {
     const user = await mobileUser(req);
@@ -33,8 +34,8 @@ export function registerMobileRoutes(app: Express) {
     const user = await mobileUser(req);
     if (!user) return res.status(401).json({ error: "Authentication required" });
     try {
-      const [daily, access] = await Promise.all([getDailyLearningOverview(learnerIdOf(user)), verifyFullAccess(learnerIdOf(user))]);
-      return res.json({ name: user.name, email: user.email, xp: daily.profile.xp, streak: daily.profile.current_streak, hasFullAccess: access.hasFullAccess });
+      const [daily, access] = await Promise.all([getDailyLearningOverview(learnerIdOf(user), offsetMinutesOf(req)), verifyFullAccess(learnerIdOf(user))]);
+      return res.json({ name: user.name, email: user.email, xp: daily.profile.xp, streak: daily.streak, hasFullAccess: access.hasFullAccess });
     } catch (error) { return res.status(500).json({ error: error instanceof Error ? error.message : "Unable to load profile" }); }
   });
   app.post("/api/mobile/lesson/complete", async (req: Request, res: Response) => {
@@ -59,7 +60,7 @@ export function registerMobileRoutes(app: Express) {
       // The lookup above stays only to answer 404 for a Lesson not yet stored;
       // the shared path reports that as an error, and the Android client reads
       // the status code.
-      const completion = await completeSupabaseLesson(learnerIdOf(user), { lessonId: lessonSlug, track: track.name, difficulty: lesson.difficulty, xp: lesson.xp });
+      const completion = await completeSupabaseLesson(learnerIdOf(user), offsetMinutesOf(req), { lessonId: lessonSlug, track: track.name, difficulty: lesson.difficulty, xp: lesson.xp });
       return res.json({ alreadyCompleted: !completion.isNewCompletion, awardedXp: completion.awardedXp, newAwards: completion.newAwards });
     } catch (error) { return res.status(500).json({ error: error instanceof Error ? error.message : "Unable to save lesson completion" }); }
   });
@@ -68,6 +69,6 @@ export function registerMobileRoutes(app: Express) {
     if (!user) return res.status(401).json({ error: "Authentication required" });
     const score = Number(req.body?.score);
     if (!Number.isInteger(score) || score < 0 || score > 100) return res.status(400).json({ error: "A score from 0 to 100 is required" });
-    try { return res.json(await completeDailyLearningTask(learnerIdOf(user), { score, submittedCode: req.body?.submittedCode })); } catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to complete daily practice" }); }
+    try { return res.json(await completeDailyLearningTask(learnerIdOf(user), offsetMinutesOf(req), { score, submittedCode: req.body?.submittedCode })); } catch (error) { return res.status(400).json({ error: error instanceof Error ? error.message : "Unable to complete daily practice" }); }
   });
 }

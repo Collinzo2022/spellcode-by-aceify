@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { stubRequest } from "./testing/request";
 import { createSupabaseStub } from "./testing/supabaseStub";
 import { makeSessionUser } from "./learner";
 import { BEGINNER_BUILD_MISSIONS } from "../shared/beginnerModule";
@@ -13,7 +14,7 @@ vi.mock("./supabase", () => ({ supabaseAdminRequest: (path: string, init?: Reque
 import { learningRouter } from "./routers/learning";
 
 const LEARNER_ID = "learner-1";
-const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: {}, res: {} } as any;
+const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: stubRequest(), res: {} } as any;
 
 const CHALLENGE_ROW = { id: "challenge-1" };
 const DAILY_TASK = { id: "daily-1", task_date: "2026-08-25", title: "Today: HTML foundations", description: "Practice", difficulty: "Beginner", xp_reward: 25, estimated_minutes: 10, task_content: {}, required_plan_code: null, lesson_id: null };

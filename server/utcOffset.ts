@@ -24,3 +24,19 @@ export function registerUtcOffsetContract(app: Express) {
     }
   });
 }
+
+/**
+ * The offset the Learner's client sent on *this* request.
+ *
+ * Ticket 11 made the offset load-bearing: it decides the Local Day a Completion
+ * is stamped with and the Local Day a Streak is read against. Taking it from the
+ * request each time, rather than from an ambient or stored value, is what keeps
+ * those two ends in the same frame - stamping in one and deriving in another
+ * silently drops days.
+ *
+ * Safe to re-parse: every route that calls this sits behind the contract above,
+ * which has already rejected a malformed value with a 400.
+ */
+export function offsetMinutesOf(req: { header(name: string): string | undefined }) {
+  return parseUtcOffsetMinutes(req.header(UTC_OFFSET_HEADER));
+}

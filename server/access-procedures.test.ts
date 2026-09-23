@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubRequest } from "./testing/request";
 import { createSupabaseStub } from "./testing/supabaseStub";
 import { forgeOff, forgeOn, restoreForge } from "./testing/forge";
 import { makeSessionUser } from "./learner";
@@ -21,7 +22,7 @@ import { certificatesRouter } from "./routers/certificates";
 import { billingRouter } from "./routers/billing";
 
 const LEARNER_ID = "learner-1";
-const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: {}, res: {} } as any;
+const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: stubRequest(), res: {} } as any;
 
 const COMPLETED_LESSONS = new RegExp(`^/rest/v1/lesson_progress\\?user_id=eq\\.${LEARNER_ID}&state=eq\\.completed`);
 
@@ -43,7 +44,9 @@ afterEach(restoreForge);
 
 describe("the learner dashboard", () => {
   it("reports the signed-in learner's own stored progress", async () => {
-    stub.stageRows(new RegExp(`^/rest/v1/profiles\\?id=eq\\.${LEARNER_ID}`), [{ id: LEARNER_ID, xp: 120, current_streak: 4, longest_streak: 9, last_learning_at: "2026-08-23" }]);
+    // Today, so the run is still live: since ticket 11 a Streak is derived on
+    // read and a fixed past date would report 0 (see streak.test.ts).
+    stub.stageRows(new RegExp(`^/rest/v1/profiles\\?id=eq\\.${LEARNER_ID}`), [{ id: LEARNER_ID, xp: 120, current_streak: 4, longest_streak: 9, last_learning_at: new Date().toISOString(), last_learning_day: new Date().toISOString().slice(0, 10) }]);
     // XP is the sum of the Learner's XP Entries since ticket 09; the column on
     // the profile is a cache of it and is not what the dashboard reports.
     stub.stageRows(new RegExp(`^/rest/v1/learner_xp_totals\\?user_id=eq\\.${LEARNER_ID}`), [{ user_id: LEARNER_ID, xp: 120 }]);

@@ -14,9 +14,18 @@ create table public.profiles (
   avatar_url text,
   role public.user_role not null default 'learner',
   xp integer not null default 0 check (xp >= 0),
+  -- The length of a run of consecutive Local Days, not a Streak on its own: a
+  -- Streak is derived on read from this and last_learning_day (ticket 11).
   current_streak integer not null default 0 check (current_streak >= 0),
   longest_streak integer not null default 0 check (longest_streak >= 0),
+  -- The real instant of the last Completion. It was once stamped at noon UTC,
+  -- which made it useless for anything but the date it carried.
   last_learning_at timestamptz,
+  -- The Learner's own calendar day the run last reached, from the offset their
+  -- client sent. Null means no run. Folded in from
+  -- supabase_local_day_streak_migration.sql, which is how an existing project
+  -- gets this column.
+  last_learning_day date,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

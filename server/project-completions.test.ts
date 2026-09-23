@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { stubRequest } from "./testing/request";
 import { createSupabaseStub } from "./testing/supabaseStub";
 import { makeSessionUser } from "./learner";
 
@@ -11,7 +12,7 @@ vi.mock("./supabase", () => ({ supabaseAdminRequest: (path: string, init?: Reque
 import { learningRouter } from "./routers/learning";
 
 const LEARNER_ID = "learner-1";
-const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: {}, res: {} } as any;
+const ctx = { user: makeSessionUser({ learnerId: LEARNER_ID, name: "Learner", email: "learner@example.com", role: "user" }), req: stubRequest(), res: {} } as any;
 
 const BUILDER_AWARD = /^\/rest\/v1\/awards\?slug=eq\.builder/;
 const PROJECT_FEED = new RegExp(`^/rest/v1/activity_events\\?user_id=eq\\.${LEARNER_ID}&event_type=eq\\.project`);
