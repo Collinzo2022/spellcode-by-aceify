@@ -1,0 +1,17 @@
+# Shell scripts are LF, whatever the checkout platform.
+#
+# A shell script with CRLF endings is not a slightly-odd file: it does not run.
+# bash reads the carriage return as part of each command, so the shebang line
+# fails with `$'\r': command not found` and `set -o pipefail` becomes an
+# invalid option name. Git Bash tolerates it; WSL bash, and every Linux and
+# macOS host, do not.
+#
+# This repo develops on Windows with core.autocrlf=true, which would otherwise
+# hand a tracked .sh file CRLF endings on checkout and break it for everyone
+# who is not on Git Bash.
+#
+# It cost a dead wizard to learn (2026-09-23), though that one was generated
+# into gitignored .scratch/ and so was never git's to normalise. This rule
+# covers the tracked case: a wizard promoted to scripts/ as a repeatable setup
+# path, a CI helper, a hook.
+*.sh text eol=lf
