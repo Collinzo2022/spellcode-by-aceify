@@ -85,3 +85,9 @@
 - [x] Commit and push the README update to both Bayospel and Kolinzoo GitHub repositories.
 - [x] Commit README.md, LICENSE, and the related documentation checklist changes, then push the update to both Bayospel and Kolinzoo repositories.
 - [x] Verify the working tree is clean after both README documentation pushes succeed.
+- [ ] Decide which of the two "first experiences" a new Learner should meet first. The Beginner
+      Quest (the first three Lessons) and the Beginner Build Lab (the three Missions, which
+      `CONTEXT.md` calls "a Learner's first experience") both claim that role, and the Home hero
+      sends a Learner to the Lab while the Quest map presents the Lessons. Ticket 13 renamed the
+      Quest's vocabulary so the two stopped sharing a word; it deliberately did not resolve which
+      one comes first, because that is a product question rather than a naming one.
