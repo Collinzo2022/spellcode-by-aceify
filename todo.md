@@ -63,7 +63,7 @@
 - [x] Audit Vercel production logs and environment configuration to confirm no database connection string or MySQL dependency remains active.
 - [x] Verify the committed Supabase migration scripts cover the authoritative production schema and are documented for replay.
 - [x] Validate Supabase authentication and learner-stat responses through the deployed application data path.
-- [ ] Validate an authenticated deployed learner dashboard request with a real Supabase bearer session and confirm live XP, streak, progress, and activity data are returned.
+- [x] Validate an authenticated deployed learner dashboard request with a real Supabase bearer session and confirm live XP, streak, progress, and activity data are returned. *(2026-09-24, against Render and the fresh Supabase project. The values are all zero because the account was newly created — what is verified is that the authenticated path returns them, not that any learning has happened.)*
 - [x] Apply `supabase_auth_profile_bridge_migration.sql` in the Supabase SQL Editor to enable automatic profile creation for all future authenticated learners.
 - [x] Add a confirm-password field with matching client-side validation to the SpellCode sign-up form.
 - [x] Add accessible show/hide password controls to both sign-up password fields.
