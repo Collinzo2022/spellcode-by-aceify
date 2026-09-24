@@ -6,11 +6,13 @@
 
 | Resource | Address |
 |---|---|
-| Production web application | [spellcode-by-aceify.vercel.app](https://spellcode-by-aceify.vercel.app) |
+| Production web application | [spellcode-by-aceify-two.vercel.app](https://spellcode-by-aceify-two.vercel.app) |
 | Backend/API host | `https://spellcode-backend.onrender.com` |
 | Android companion package | `com.bayospel.spelcode` |
 
 > The former Manus host, `spellcode-tnyv8stq.manus.space`, is **dead to this project**. Nobody can sign into it, it still answers with a build older than `main`, and its keys could not be recovered. It is recorded here only so that an address found in an old document is recognised as abandoned rather than tried.
+
+> **The `-two` in the production address is deliberate — do not "correct" it.** `spellcode-by-aceify.vercel.app` is held by an older Vercel project wired to `Bayospel/spellcode-by-aceify`, which this codebase no longer pushes to; it serves a pre-move build and still proxies `/api/*` to Manus. The live project is a second one connected to `Collinzo2022/spellcode-by-aceify`, and Vercel gave it the `-two` suffix because the name was taken. Renaming a Vercel project does not move its `.vercel.app` domain, so the shorter address stays where it is. **Supabase Auth's Site URL and its `/auth/confirmed` redirect must name the `-two` address**, or confirmation emails will send new learners to the dead site.
 
 ## Learning experience
 
@@ -166,7 +168,7 @@ Render deploys from the repository root: build `pnpm install && pnpm build`, sta
 To confirm a deployment actually took effect, ask the deployed site for something only the new backend serves:
 
 ```bash
-curl -s -D - -o /dev/null https://spellcode-by-aceify.vercel.app/api/mobile/config
+curl -s -D - -o /dev/null https://spellcode-by-aceify-two.vercel.app/api/mobile/config
 ```
 
 `content-type: application/json` means the rewrite is live. `text/html` means Vercel answered with the SPA shell or proxied somewhere stale, and the deployment is not what the repository says it is.
