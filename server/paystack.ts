@@ -127,9 +127,11 @@ async function updateSubscriptionLifecycle(input: { event: string; data: Record<
 
 export function registerPaystackWebhook(app: Express) {
   app.post("/api/paystack/webhook", async (req: Request & { rawBody?: Buffer }, res: Response) => {
-    const raw = req.rawBody ?? Buffer.from(JSON.stringify(req.body));
+    // Paystack signs the bytes it sent, so only the bytes it sent can be verified. Without them
+    // the request is unverifiable and is refused rather than checked against a re-serialisation.
+    const raw = req.rawBody;
     const received = req.header("x-paystack-signature") ?? "";
-    if (!isValidPaystackSignature(raw, received, ENV.paystackSecretKey)) return res.status(401).json({ error: "Invalid Paystack signature" });
+    if (!raw || !isValidPaystackSignature(raw, received, ENV.paystackSecretKey)) return res.status(401).json({ error: "Invalid Paystack signature" });
     const event = req.body as { event?: string; data?: Record<string, unknown> };
     const eventId = crypto.createHash("sha256").update(raw).digest("hex");
     try {

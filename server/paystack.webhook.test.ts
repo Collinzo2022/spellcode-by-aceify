@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type express from "express";
+import express from "express";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { supabaseRequest, payments, subscription } = vi.hoisted(() => ({
@@ -12,6 +12,7 @@ vi.mock("./_core/env", () => ({ ENV: { paystackSecretKey: "webhook-secret" } }))
 vi.mock("./supabase", () => ({ supabaseAdminRequest: supabaseRequest }));
 
 import { createSpellCodeApp } from "./app";
+import { registerPaystackWebhook } from "./paystack";
 
 const event = { event: "charge.success", data: { id: 9002, reference: "renewal-002", amount: 4000000, currency: "NGN", paid_at: "2026-08-15T00:00:00.000Z", metadata: { user_id: "learner-1", plan_code: "full-access-3-month" }, plan: { plan_code: "PLN_3MONTH" }, customer: { customer_code: "CUS_123" }, authorization: { authorization_code: "AUTH_123" } } };
 
@@ -60,6 +61,19 @@ describe("Paystack recurring webhook route", () => {
     expect(wireFormat).not.toBe(JSON.stringify(JSON.parse(wireFormat)));
     await expect(postEvent(wireFormat)).resolves.toMatchObject({ status: 200 });
     expect(payments.get("renewal-002")?.status).toBe("success");
+  });
+
+  // The route used to fall back to Buffer.from(JSON.stringify(req.body)) when the raw body was
+  // missing, which verifies a signature against bytes nobody sent and happens to agree only when
+  // the payload survives a JSON round trip. An app assembled without the capture must now be
+  // refused outright, so the mistake surfaces as a dead webhook rather than as one that works
+  // until a payload stops round-tripping.
+  it("refuses a signed webhook when the app was assembled without the raw-body capture", async () => {
+    app = express();
+    app.use(express.json());
+    registerPaystackWebhook(app);
+    await expect(postEvent()).resolves.toMatchObject({ status: 401 });
+    expect(payments.size).toBe(0);
   });
 
   it("does not add a second installment when Paystack replays the same signed webhook", async () => {
