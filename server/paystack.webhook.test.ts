@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
-import express from "express";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type express from "express";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { supabaseRequest, payments, subscription } = vi.hoisted(() => ({
   payments: new Map<string, { id: string; user_id: string; plan_id: string; paystack_reference: string; amount_minor: number; currency: string; status: string }>(),
@@ -11,7 +11,7 @@ const { supabaseRequest, payments, subscription } = vi.hoisted(() => ({
 vi.mock("./_core/env", () => ({ ENV: { paystackSecretKey: "webhook-secret" } }));
 vi.mock("./supabase", () => ({ supabaseAdminRequest: supabaseRequest }));
 
-import { registerPaystackWebhook } from "./paystack";
+import { createSpellCodeApp } from "./app";
 
 const event = { event: "charge.success", data: { id: 9002, reference: "renewal-002", amount: 4000000, currency: "NGN", paid_at: "2026-08-15T00:00:00.000Z", metadata: { user_id: "learner-1", plan_code: "full-access-3-month" }, plan: { plan_code: "PLN_3MONTH" }, customer: { customer_code: "CUS_123" }, authorization: { authorization_code: "AUTH_123" } } };
 
@@ -33,11 +33,12 @@ describe("Paystack recurring webhook route", () => {
       if (path.includes("subscriptions?id=eq.sub-1") && init?.method === "PATCH") { subscription.installments_paid = body.installments_paid; return []; }
       return [];
     });
-    app = express(); app.use(express.json()); registerPaystackWebhook(app);
+    app = createSpellCodeApp();
   });
 
-  async function postEvent() {
-    const body = JSON.stringify(event); const signature = crypto.createHmac("sha512", "webhook-secret").update(Buffer.from(body)).digest("hex");
+  /** The real application, because the raw-body capture the signature depends on lives in it. */
+  async function postEvent(body = JSON.stringify(event)) {
+    const signature = crypto.createHmac("sha512", "webhook-secret").update(Buffer.from(body)).digest("hex");
     const server = await new Promise<ReturnType<express.Express["listen"]>>(resolve => { const instance = app.listen(0, () => resolve(instance)); });
     const address = server.address(); const port = typeof address === "object" && address ? address.port : 0;
     const response = await fetch(`http://127.0.0.1:${port}/api/paystack/webhook`, { method: "POST", headers: { "Content-Type": "application/json", "x-paystack-signature": signature }, body });
@@ -48,6 +49,17 @@ describe("Paystack recurring webhook route", () => {
     await expect(postEvent()).resolves.toMatchObject({ status: 200 });
     expect(payments.get("renewal-002")?.status).toBe("success");
     expect(subscription.installments_paid).toBe(2);
+  });
+
+  // Paystack signs the bytes it sends, and those bytes do not survive a JSON round trip: spacing,
+  // key order and \uXXXX escaping are all lost. So this body is signed in a form that
+  // JSON.stringify(req.body) cannot reproduce, and it passes only if the route verified the raw
+  // request rather than a re-serialised object.
+  it("accepts a signed body whose bytes differ from its re-serialised form", async () => {
+    const wireFormat = JSON.stringify(event, null, 2).replace('"NGN"', '"NG\\u004e"');
+    expect(wireFormat).not.toBe(JSON.stringify(JSON.parse(wireFormat)));
+    await expect(postEvent(wireFormat)).resolves.toMatchObject({ status: 200 });
+    expect(payments.get("renewal-002")?.status).toBe("success");
   });
 
   it("does not add a second installment when Paystack replays the same signed webhook", async () => {
