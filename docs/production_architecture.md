@@ -47,7 +47,7 @@ Getting it backwards fails loudly rather than silently. The server-side Supabase
 | Billing, Paystack verification, Full Access | Supabase Postgres plus Paystack webhooks |
 | Published projects and certificate artifacts | Managed storage plus Supabase metadata |
 | Web frontend | Vite/React static output |
-| API, tRPC, mobile routes, Paystack webhook | Stable Manus-hosted Express backend |
+| API, tRPC, mobile routes, Paystack webhook | Render-hosted Express backend |
 
 ## Pruning the Activity Feed
 
@@ -72,7 +72,7 @@ CONTEXT.md defines the **Local Day** and why the server is told it rather than g
 
 Send it on every request rather than only those that record a completion or read a Streak; that way no future caller has to remember it. Read it per request, not once at startup, so a long session stays correct across a daylight saving change or a flight.
 
-**Both clients must ship this.** The web application sends it from `client/src/main.tsx`. The Android companion is a separate codebase and is **not yet updated** — until it is, its Learners fall back to UTC and can see subtly different Streaks from identical behaviour.
+**Both clients must ship this.** The web application sends it from `client/src/main.tsx`. The Android companion is a separate codebase that **will not be updated**: the released APK predates the header, and nobody on the project can build another one. Its Learners fall back to UTC and can see subtly different Streaks from identical behaviour. This is accepted, not pending — what a future release must do is specified in [android_handoff.md](android_handoff.md).
 
 Known and accepted: a numeric offset is client-supplied and therefore spoofable, and it does not survive a daylight saving transition that falls mid-day. The exit, should either matter, is to send a zone identifier and resolve the local day server-side — a change of contract, not a redesign.
 
@@ -80,18 +80,31 @@ Known and accepted: a numeric offset is client-supplied and therefore spoofable,
 
 Vercel builds the Vite client into `dist/public` with `pnpm vite build`. The root `vercel.json` declares that directory as the deployment output and preserves SPA navigation by rewriting non-API routes to `index.html`.
 
-Vercel serves the static Vite client and rewrites every `/api/*` request to the stable Manus-hosted Express backend at `https://spellcode-tnyv8stq.manus.space`. This keeps browser requests same-origin at the Vercel domain while preserving the backend’s managed storage, AI, Paystack, and Supabase integration environment. The local and Manus-hosted backend use the shared application in `server/app.ts` before attaching Vite middleware or static serving.
+Vercel serves the static Vite client and rewrites every `/api/*` request to the Render-hosted Express backend at `https://spellcode-backend.onrender.com`. This keeps browser requests same-origin at the Vercel domain. The local and Render-hosted backend use the shared application in `server/app.ts` before attaching Vite middleware or static serving.
+
+Render builds from the repository root with `pnpm install && pnpm build` and starts with `pnpm start`, on a free instance. **A free instance sleeps when idle.** The first request after it sleeps pays a cold start that can exceed a client's timeout — measured at over 45 seconds on 2026-09-24, against 0.6 seconds once awake. A Paystack webhook arriving at a sleeping instance can therefore time out, delaying that Learner's Full Access, which is why a non-sleeping instance is a launch item rather than an optimisation.
+
+There is no API domain. A host move means editing `vercel.json` and the Paystack webhook address, and nothing else — the reason the domain was dropped once the Android release closed.
+
+**Verifying that a deployment took effect.** `vercel.json` naming Render proves nothing about what the production alias serves; the two have already disagreed. Ask the deployed site for a route only the backend answers — `GET /api/mobile/config` — and read the content type. `application/json` means the rewrite is live. `text/html` means the SPA shell came back instead, and the alias is serving a deployment older than the commit.
 
 ## Required Vercel environment variables
 
-The Vercel static frontend requires no server-side Supabase, Paystack, storage, or AI secrets. Those values remain only in the Manus-hosted backend environment. Do not commit values to the repository.
+The Vercel static frontend requires no server-side Supabase, Paystack, storage, or AI secrets. Those values live only in the Render service's environment. Do not commit values to the repository.
 
 | Variable | Purpose |
 |---|---|
-| `SUPABASE_URL` | Manus-hosted backend only: Supabase project URL |
-| `SUPABASE_ANON_KEY` | Manus-hosted backend only: Supabase bearer-token validation |
-| `SUPABASE_SERVICE_ROLE_KEY` | Manus-hosted backend only: server-side Supabase data access |
-| `PAYSTACK_SECRET_KEY` | Manus-hosted backend only: checkout and webhook verification |
-| `BUILT_IN_FORGE_API_URL` and `BUILT_IN_FORGE_API_KEY` | Manus-hosted backend only: managed storage and AI features |
+| `SUPABASE_URL` | Render only: Supabase project URL |
+| `SUPABASE_ANON_KEY` | Render only: Supabase bearer-token validation |
+| `SUPABASE_SERVICE_ROLE_KEY` | Render only: server-side Supabase data access |
+| `PAYSTACK_SECRET_KEY` | Render only: checkout and webhook verification |
+| `PAYSTACK_PUBLIC_KEY` | Render only: served to the client to initialise checkout |
+| `NODE_ENV` | Render only: `production` |
 
-After importing this repository into Vercel, use the repository root as the project root. Do not set `server/_core/index.ts` as Vercel's entrypoint and do not configure a Vercel server function. Vercel must use the committed `vercel.json` and Vite build output. Keep Paystack's webhook configured directly to `https://spellcode-tnyv8stq.manus.space/api/paystack/webhook`.
+The browser fetches the Supabase URL and anon key at runtime through `auth.supabaseConfig`, so changing Supabase project or rolling the anon key needs no Vercel rebuild. `authenticateRequest` accepts only a Supabase bearer token, so the scaffold's `JWT_SECRET` and OAuth variables are dead and are not set.
+
+`BUILT_IN_FORGE_API_URL` and `BUILT_IN_FORGE_API_KEY` are **not set anywhere and must not be reintroduced.** They addressed Manus-managed storage and AI; the key belonged to Manus and could not be regenerated when access to that host was lost. The three features that used them — the AI tutor, guided-project publishing and certificate issuance — report "unavailable" instead of failing. Restoring them means moving publishing and certificates to Supabase Storage and the tutor to a direct LLM provider, not finding a replacement Forge key.
+
+After importing this repository into Vercel, use the repository root as the project root. Do not set `server/_core/index.ts` as Vercel's entrypoint and do not configure a Vercel server function. Vercel must use the committed `vercel.json` and Vite build output. Keep Paystack's webhook configured directly to `https://spellcode-backend.onrender.com/api/paystack/webhook`.
+
+Both Vercel and Render must be connected to the repository this working copy actually pushes to — `Collinzo2022/spellcode-by-aceify`, as `git remote -v` reports. A deployment platform connected to an earlier home of this code will sit at whatever commit it last saw while pushes appear to succeed.

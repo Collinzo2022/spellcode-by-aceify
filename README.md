@@ -6,10 +6,11 @@
 
 | Resource | Address |
 |---|---|
-| Production web application | [spellcode-tnyv8stq.manus.space](https://spellcode-tnyv8stq.manus.space) |
-| Vercel static frontend | [spellcode-by-aceify.vercel.app](https://spellcode-by-aceify.vercel.app) |
-| Backend/API host | `https://spellcode-tnyv8stq.manus.space` |
+| Production web application | [spellcode-by-aceify.vercel.app](https://spellcode-by-aceify.vercel.app) |
+| Backend/API host | `https://spellcode-backend.onrender.com` |
 | Android companion package | `com.bayospel.spelcode` |
+
+> The former Manus host, `spellcode-tnyv8stq.manus.space`, is **dead to this project**. Nobody can sign into it, it still answers with a build older than `main`, and its keys could not be recovered. It is recorded here only so that an address found in an old document is recognised as abandoned rather than tried.
 
 ## Learning experience
 
@@ -23,7 +24,9 @@ SpellCode is designed around short, purposeful practice rather than passive watc
 | **Daily loop** | Daily coding task, streak tracking, XP, completion recovery states, and activity history. |
 | **Verified awards** | Awards unlock only from persisted evidence: completed lessons, passed coding challenges, streaks, XP, guided projects, and Beginner Build Lab missions. |
 | **Learner records** | Dashboard and profile show real XP, streak, lesson progress, activity, earned awards, award criteria, and measured next goals. |
-| **Full Access** | Paid access gates later lessons, guided-project publishing, certificates, and unlimited AI tutor use. |
+| **Full Access** | Paid access gates later lessons, guided-project publishing, certificates, and unlimited AI tutor use. Publishing, certificates and the tutor currently report **unavailable** — see below. |
+
+> **Three features are switched off.** The AI tutor, guided-project publishing and certificate issuance all ran through Manus-managed integrations whose key belonged to Manus and cannot be regenerated. Since the move off Manus they answer "unavailable" rather than failing. They come back when publishing and certificates move to Supabase Storage, and the tutor to a direct LLM provider.
 
 ### Verified award rules
 
@@ -50,7 +53,7 @@ The active production data path is **Supabase only**. Supabase Auth provides the
 | Identity | Supabase email/password authentication, with profile UUIDs bridged to `auth.users`. |
 | Learning state | Supabase Postgres tables for progress, challenges, daily tasks, activities, and awards. |
 | Payments | Paystack checkout, server-side verification, entitlement enforcement, and idempotent webhook processing. |
-| Web deployment | Vercel serves the static Vite frontend and proxies `/api/*` to the Manus-hosted Express backend. |
+| Web deployment | Vercel serves the static Vite frontend and proxies `/api/*` to the Render-hosted Express backend. |
 | Mobile | Separate Expo/React Native Android companion app using the same production API. **Unsupported until a new release ships:** nobody on the project can currently build or sign one. What that release must do is in [docs/android_handoff.md](docs/android_handoff.md). |
 
 The detailed production model is available in [docs/production_architecture.md](docs/production_architecture.md).
@@ -88,7 +91,7 @@ pnpm start
 
 ## Environment configuration
 
-Secrets belong in the managed backend environment, never in the repository or Vercel static build. The Vercel deployment does not require server-side Supabase, Paystack, storage, or AI keys because its `/api/*` calls proxy to the managed backend.
+Secrets belong in the Render service's environment, never in the repository or Vercel static build. The Vercel deployment does not require server-side Supabase, Paystack, storage, or AI keys because its `/api/*` calls proxy to Render.
 
 | Variable | Required by | Purpose |
 |---|---|---|
@@ -97,8 +100,9 @@ Secrets belong in the managed backend environment, never in the repository or Ve
 | `SUPABASE_SERVICE_ROLE_KEY` | Backend | Performs server-authorized learning, billing, and award operations. |
 | `PAYSTACK_PUBLIC_KEY` | Frontend configuration | Initializes the payment experience. |
 | `PAYSTACK_SECRET_KEY` | Backend | Creates/verifies payments and validates webhooks. |
-| `BUILT_IN_FORGE_API_URL` | Backend | Managed platform integrations. |
-| `BUILT_IN_FORGE_API_KEY` | Backend | Authorizes managed platform integrations. |
+| `NODE_ENV` | Backend | `production` on Render. |
+
+`BUILT_IN_FORGE_API_URL` and `BUILT_IN_FORGE_API_KEY` are **no longer set anywhere**. They addressed Manus-managed integrations, the key was Manus's rather than this project's, and the three features that used them are off. Do not reintroduce them.
 
 For public sign-up volume, configure an SMTP provider in **Supabase Authentication → SMTP**. The in-app cooldown helps avoid repeated confirmation requests, but it cannot remove a project-wide mail-provider rate limit; Supabase documents the provider and rate-limit configuration separately.[1]
 
@@ -130,7 +134,7 @@ All billing uses **NGN** and is processed through Paystack.
 Set the Paystack plan codes in Supabase before activating the installment plans. Configure the Paystack webhook endpoint as:
 
 ```text
-https://spellcode-tnyv8stq.manus.space/api/paystack/webhook
+https://spellcode-backend.onrender.com/api/paystack/webhook
 ```
 
 The webhook handler verifies the signature and processes transaction references idempotently. Complete a controlled production payment after configuration so checkout, webhook delivery, and entitlement activation can be accepted end to end. Paystack’s official webhook guidance is linked in the references.[2]
@@ -149,13 +153,23 @@ The administrator dashboard provides plan management and learner subscription/pa
 
 ## Deployment
 
-The repository’s `vercel.json` builds the Vite client and preserves single-page application navigation. It rewrites `/api/*` to the Manus-hosted backend instead of running the Express server as a Vercel function.
+The repository’s `vercel.json` builds the Vite client and preserves single-page application navigation. It rewrites `/api/*` to the Render-hosted backend instead of running the Express server as a Vercel function.
 
 ```text
-Vercel static frontend → /api/* proxy → Manus Express backend → Supabase / Paystack
+Vercel static frontend → /api/* proxy → Render Express backend → Supabase / Paystack
 ```
 
-Pushes to `main` on the `Bayospel/spellcode-by-aceify` repository trigger the connected Vercel deployment. This codebase is also synchronized to `kolinzoo/spellcode-by-aceify`.
+Render deploys from the repository root: build `pnpm install && pnpm build`, start `pnpm start`, on a free instance. A free instance **sleeps when idle**, and the first request after it sleeps can take longer than a client is willing to wait — including a Paystack webhook, which is why a non-sleeping instance is on the launch checklist.
+
+`git remote -v` is the authority on where this code is pushed: `Collinzo2022/spellcode-by-aceify`. Vercel and Render must both be connected to **that** repository, or a push lands in GitHub and never reaches either.
+
+To confirm a deployment actually took effect, ask the deployed site for something only the new backend serves:
+
+```bash
+curl -s -D - -o /dev/null https://spellcode-by-aceify.vercel.app/api/mobile/config
+```
+
+`content-type: application/json` means the rewrite is live. `text/html` means Vercel answered with the SPA shell or proxied somewhere stale, and the deployment is not what the repository says it is.
 
 ## Testing and quality checks
 
@@ -165,7 +179,25 @@ The test suite covers core curriculum contracts, progress and challenge validati
 pnpm check && pnpm test && pnpm build
 ```
 
-The current release passes **16 test files** and a production build. Visual checks also cover the interactive Beginner Build Lab in light and dark mode; see [docs/theme_visual_validation.md](docs/theme_visual_validation.md).
+The current release passes **188 tests across 31 files**, with 2 skipped and a production build. Visual checks also cover the interactive Beginner Build Lab in light and dark mode; see [docs/theme_visual_validation.md](docs/theme_visual_validation.md).
+
+The two skips are deliberate: `server/external-config.test.ts` holds the tests that need real Supabase and Paystack credentials, and each prints why it skipped. **Vitest does not load `.env`** — only the server's entry point does — so those tests skip on a plain `pnpm test` and the suite reads green having reached no external service. To make them run, and to make a missing key fail instead of skip:
+
+```bash
+set -a; . ./.env; set +a; REQUIRE_CREDENTIALS=1 npx vitest run
+```
+
+That is **bash**. In PowerShell, which is what this project's terminal runs, it is:
+
+```powershell
+Get-Content .env | ForEach-Object { if ($_ -match '^\s*([A-Z_]+)=(.*)$') { Set-Item "env:$($matches[1])" $matches[2] } }
+$env:REQUIRE_CREDENTIALS = '1'
+npx vitest run
+```
+
+Pass there means 0 failed **and** 0 skipped, which is **190 of 190**. Any other skip, or any
+failure, is new. A gated test that takes a second or so is doing its job — that is the real network
+round trip; one that returns instantly has not left the machine.
 
 ## Production acceptance checklist
 
@@ -180,9 +212,10 @@ Before treating a production rollout as fully accepted, complete these external 
 
 | Repository | Purpose |
 |---|---|
-| [Bayospel/spellcode-by-aceify](https://github.com/Bayospel/spellcode-by-aceify) | Primary web repository connected to Vercel. |
-| [kolinzoo/spellcode-by-aceify](https://github.com/kolinzoo/spellcode-by-aceify) | Private mirror of the web repository. |
-| [Bayospel/spellcode-android](https://github.com/Bayospel/spellcode-android) | Expo/React Native Android companion source. |
+| [Collinzo2022/spellcode-by-aceify](https://github.com/Collinzo2022/spellcode-by-aceify) | **The repository this working copy pushes to**, private. Vercel and Render deploy from it. |
+| [Bayospel/spellcode-by-aceify](https://github.com/Bayospel/spellcode-by-aceify) | Earlier home of the web repository. |
+| [kolinzoo/spellcode-by-aceify](https://github.com/kolinzoo/spellcode-by-aceify) | Private mirror. |
+| [Bayospel/spellcode-android](https://github.com/Bayospel/spellcode-android) | Expo/React Native Android companion source. **Unreachable:** nobody on the project has access to it or to the Expo account that signed the APK, and its owner cannot be contacted. |
 
 ## License
 
