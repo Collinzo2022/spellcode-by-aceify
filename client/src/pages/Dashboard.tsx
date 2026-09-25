@@ -7,6 +7,7 @@ import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { CURRICULUM } from "@shared/curriculum";
 import { ArrowRight, Award, BookOpenCheck, CalendarDays, CheckCircle2, Flame, GraduationCap, Sparkles, Target, Trophy } from "lucide-react";
+import { toast } from "sonner";
 import { Link } from "wouter";
 
 const statCards = [
@@ -20,7 +21,7 @@ export default function Dashboard() {
   const { isAuthenticated, user } = useAuth();
   const utils = trpc.useUtils();
   const dashboard = trpc.learning.dashboard.useQuery(undefined, { enabled: isAuthenticated });
-  const enroll = trpc.learning.enrollTrack.useMutation({ onSuccess: () => utils.learning.dashboard.invalidate() });
+  const enroll = trpc.learning.enrollTrack.useMutation({ onSuccess: () => utils.learning.dashboard.invalidate(), onError: error => toast.error(error.message) });
 
   if (!isAuthenticated) return <div className="min-h-screen bg-[#111116] text-[#f8f5ef]"><AppHeader /><main className="grid min-h-[70vh] place-items-center px-5"><div className="max-w-md text-center"><span className="mx-auto grid size-12 place-items-center rounded-2xl bg-[#7e67d8]/15 text-[#c8b8f0]"><Sparkles className="size-5" /></span><p className="mt-6 font-mono text-[10px] uppercase tracking-[0.16em] text-[#c8a46e]">Private learning space</p><h1 className="mt-3 font-display text-4xl tracking-[-0.05em]">Your dashboard is ready when you are.</h1><p className="mt-4 text-[15px] leading-7 text-[#aaa5af]">Sign in to build a personal curriculum, track XP and streaks, and save every lesson and challenge you complete.</p><button onClick={startLogin} className="mt-7 rounded-full bg-[#eee8df] px-5 py-3 text-sm font-semibold text-[#19171b]">Log in to open your dashboard</button></div></main><AppFooter /></div>;
 

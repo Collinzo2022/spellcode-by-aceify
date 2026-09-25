@@ -1,32 +1,27 @@
 import { trpc } from "@/lib/trpc";
-import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { httpBatchLink, TRPCClientError } from "@trpc/client";
+import { httpBatchLink } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import { startLogin } from "./const";
-import { getSupabaseAccessToken } from "./lib/supabaseAuth";
-import { currentUtcOffsetHeader } from "@shared/utcOffset";
+import { classifyRequestError, requestHeaders } from "./lib/trpcAuth";
 import "./index.css";
 
 const queryClient = new QueryClient();
 
-const redirectToLoginIfUnauthorized = (error: unknown) => {
-  if (!(error instanceof TRPCClientError)) return;
+// A 401 is only a sign-in when there is no session left to renew. While one can
+// still be refreshed, classifyRequestError marks the token spent and the next
+// request renews it, so the Learner keeps the page they were on (ticket 27).
+const respondToRequestError = (error: unknown) => {
   if (typeof window === "undefined") return;
-
-  const isUnauthorized = error.message === UNAUTHED_ERR_MSG;
-
-  if (!isUnauthorized) return;
-
-  startLogin();
+  if (classifyRequestError(error) === "sign-in") startLogin();
 };
 
 queryClient.getQueryCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
     const error = event.query.state.error;
-    redirectToLoginIfUnauthorized(error);
+    respondToRequestError(error);
     console.error("[API Query Error]", error);
   }
 });
@@ -34,27 +29,17 @@ queryClient.getQueryCache().subscribe(event => {
 queryClient.getMutationCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
     const error = event.mutation.state.error;
-    redirectToLoginIfUnauthorized(error);
+    respondToRequestError(error);
     console.error("[API Mutation Error]", error);
   }
 });
-
-function authorizationHeader(): Record<string, string> {
-  const supabaseToken = getSupabaseAccessToken();
-  if (supabaseToken) return { Authorization: `Bearer ${supabaseToken}` };
-  return {};
-}
 
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
-      headers() {
-        // Read per request, not once at startup, so a session open across a
-        // daylight saving change or a flight corrects itself.
-        return { ...currentUtcOffsetHeader(), ...authorizationHeader() };
-      },
+      headers: requestHeaders,
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),

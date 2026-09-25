@@ -1,7 +1,7 @@
 import { startLogin } from "@/const";
 import { trpc } from "@/lib/trpc";
 import { TRPCClientError } from "@trpc/client";
-import { clearSupabaseSession, getSupabaseAccessToken } from "@/lib/supabaseAuth";
+import { clearSupabaseSession, hasSupabaseSession } from "@/lib/supabaseAuth";
 import { useCallback, useEffect, useMemo } from "react";
 
 type UseAuthOptions = {
@@ -47,8 +47,9 @@ export function useAuth(options?: UseAuthOptions) {
   }, [logoutMutation, utils]);
 
   const state = useMemo(() => {
-    const hasSupabaseSession = Boolean(getSupabaseAccessToken());
-    const user = hasSupabaseSession ? meQuery.data ?? null : null;
+    // A session the client can still refresh counts as signed in. Reading only
+    // the live token here would sign every Learner out on the hour (ticket 27).
+    const user = hasSupabaseSession() ? meQuery.data ?? null : null;
     return {
       user,
       loading: meQuery.isLoading || logoutMutation.isPending,
