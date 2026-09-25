@@ -214,10 +214,14 @@ still answering the API path with HTML.
   (`SUPABASE_URL, SUPABASE_ANON_KEY not set`, `PAYSTACK_SECRET_KEY not set`). Any other skip, or any
   failure, is new.
 - `npx tsc --noEmit` clean. `npx vite build` clean.
-- `main` and `origin/main` are both `703e1cf`. Working tree clean, nothing unpushed.
-- Three commits landed after the previous handoff's `5753e04`: `18b4bd4` (ticket 24), `285bdf1` (the
-  `req.rawBody` fallback removed), `703e1cf` (ticket 27). The first two are pushed **and deployed**;
-  `703e1cf` is pushed and confirmed deployed on both hosts.
+- `main` and `origin/main` are both `840921e`. Working tree clean, nothing unpushed. **The suite,
+  `tsc` and `vite build` above were last run at `703e1cf`**; the two commits since — `840921e` (the
+  move into `docs/`) and the docs-only commit carrying this correction — touch no code, so nothing
+  should have moved, but no one has re-run them to say so.
+- Four commits landed after the previous handoff's `5753e04`: `18b4bd4` (ticket 24), `285bdf1` (the
+  `req.rawBody` fallback removed), `703e1cf` (ticket 27) and `840921e` (the move into `docs/`). The
+  first two are pushed **and deployed**; `703e1cf` is pushed and confirmed deployed on both hosts.
+  `840921e` is docs-only and changes nothing either host serves.
 - The merged local branch `ticket/14-replay-path-runnable` still exists, as do
   `fix/domain-model-alignment` and `claude/clever-roentgen-440fc0` (a worktree under `.claude/`).
 

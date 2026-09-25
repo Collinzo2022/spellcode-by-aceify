@@ -45,7 +45,14 @@
 - [x] Add a dedicated Android lesson-detail screen reachable from the curriculum list, with theory, progression, and paid lesson gating.
 - [x] Add a true Android learner dashboard with daily-practice summary, XP, streak, access status, and routes into the core learning flows.
 - [x] Open and visually verify the signed Android APK on a physical Android device with the configured production environment values.
-- [ ] Run a post-deployment real Paystack transaction and webhook delivery acceptance test (Android physical-device acceptance is complete).
+- [ ] Run a post-deployment real Paystack transaction and webhook delivery acceptance test (Android
+      physical-device acceptance is complete). **Attempted 2026-09-25 03:43 UTC and failed with money
+      moved:** the charge succeeded at Paystack and the application recorded none of it, because the
+      Test Webhook URL had never been set. Setting it does not replay that payment, and the orphaned
+      `pending` subscription blocks a second checkout on that account
+      (`server/paystack.ts:48-49`). Read `docs/domain-model-alignment/issues/28-paid-transaction-never-reached-the-application.md`
+      before re-running, and `...29-no-reconciliation-pass-for-unfinished-payments.md` for the
+      missing safety net. Re-run with a second test account, or reconcile the 03:43Z row first.
 - [x] Update the private GitHub repository with the Supabase, Paystack, daily-learning, admin, and Android implementation.
 - [x] Configure the Android release build profile and create a signed downloadable APK through Expo.
 - [x] Deliver the APK installation link and concise device setup instructions.
