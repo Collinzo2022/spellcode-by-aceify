@@ -97,9 +97,29 @@ Ticket 20's wizard is `docs/domain-model-alignment/switch-wizard.sh`, 12 stages.
 | 11 Pause the old Supabase project | not done — operator only |
 | 12 Done | — |
 
-**Do not re-run the wizard.** It has no resume state, so it walks from stage 1, and stages 2 and 3
-would roll the Paystack keys again and rebuild the database. Use `switch-wizard.sh:403-560` as a
-checklist and work stages 10–12 by hand.
+**Do not re-run `switch-wizard.sh`.** It has no resume state, so it walks from stage 1, and stages 2
+and 3 would roll the Paystack keys again and rebuild the database.
+
+**Use `finish-switch-wizard.sh` instead**, in this same directory and committed 2026-09-26. It is the
+remainder as its own wizard — ten stages beginning at stage 8 — and it replaces the earlier
+instruction here, which was to read `switch-wizard.sh:403-560` as a checklist and work the rest by
+hand:
+
+```bash
+bash docs/domain-model-alignment/finish-switch-wizard.sh
+```
+
+It covers stage 8 (the webhook URL, ticket 28), waking Render, a second test Learner, stage 10's
+checkout, proving a `charge.success` row actually arrived, reconciling the orphaned 03:43Z payment
+through `/payment/complete?reference=…` rather than by editing rows, stage 11, ticket 26, and a look
+at the live-mode webhook field. It asks for no secrets, and its checks read `.env` and send nothing
+but GET. Stages 5, 7, 8 and 9 each confirm before they act, and it refuses to let you pause the live
+Supabase project, delete the wrong Vercel project, reclaim the freed unsuffixed name, or run the
+checkout on the account that cannot start one.
+
+Two things it does not do: it is not a substitute for reading ticket 28 first, and it was checked
+with `bash -n` but never run end to end, because it opens browsers and blocks on input. The first
+person to run it is also testing it.
 
 ### Stage 8, stated once
 
@@ -277,7 +297,10 @@ a reset is off the table.
    Kept in place rather than deleted so the list reads as a record. **Cite these items by title, not
    by number** — the 2026-09-25 rewrite renumbered them, which silently broke the references in
    tickets 21 and 23; both now name what they mean.
-2. **Stage 8, then stage 10 — in that order. Read ticket 28 before touching either.** Stage 10 ran
+2. **Stage 8, then stage 10 — in that order. Read ticket 28 before touching either.**
+   **`finish-switch-wizard.sh` walks all of this, and items 3, 4 and 5's first box too** — see "Where
+   the switch stands". Read this item and ticket 28 first anyway; the wizard executes the procedure,
+   it does not explain why. Stage 10 ran
    on 2026-09-25 at 03:43Z and failed: the charge succeeded at Paystack (`spellcode-5a09dd9d-…`,
    ₦120,000, `success`) and the application recorded none of it. **A Learner paid and has no Full
    Access.**
