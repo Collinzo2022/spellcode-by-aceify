@@ -6,8 +6,9 @@ Configuration for coding agents working in this repo.
 
 ### Issue tracker
 
-Issues live as markdown files under `.scratch/<feature>/issues/`, not on GitHub. See
-`docs/agents/issue-tracker.md`.
+Issues live as markdown files under `docs/<feature>/issues/`, not on GitHub, and are **tracked** —
+they moved out of a gitignored `.scratch/` on 2026-09-25, so editing one is a committable change.
+See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

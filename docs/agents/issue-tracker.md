@@ -1,18 +1,18 @@
 # Issue tracker: Local Markdown
 
-Issues and specs for this repo live as markdown files in `.scratch/`.
+Issues and specs for this repo live as markdown files in `docs/`.
 
 ## Conventions
 
-- One feature per directory: `.scratch/<feature-slug>/`
-- The spec is `.scratch/<feature-slug>/spec.md`
-- Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`, never a single combined tickets file
+- One feature per directory: `docs/<feature-slug>/`
+- The spec is `docs/<feature-slug>/spec.md`
+- Implementation issues are one file per ticket at `docs/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`, never a single combined tickets file
 - Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
 - Comments and conversation history append to the bottom of the file under a `## Comments` heading
 
 ## When a skill says "publish to the issue tracker"
 
-Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed).
+Create a new file under `docs/<feature-slug>/` (creating the directory if needed).
 
 ## When a skill says "fetch the relevant ticket"
 
@@ -20,18 +20,24 @@ Read the file at the referenced path. The user will normally pass the path or th
 
 ## In this repo
 
-The active feature directory is `.scratch/domain-model-alignment/`, holding `spec.md`, a
-`handoff.md` recording the decisions behind the effort, and 20 issues at `issues/NN-<slug>.md`.
-Commit messages reference these by number as "ticket NN", so the numbering is load-bearing:
-`git log --grep 'ticket 14'` is how you find the work for an issue.
+The active feature directory is `docs/domain-model-alignment/`, holding `spec.md`, a
+`handoff.md` recording the decisions behind the effort, 29 issues at `issues/NN-<slug>.md`, and the
+switch wizard from ticket 20. Commit messages reference these by number as "ticket NN", so the
+numbering is load-bearing: `git log --grep 'ticket 14'` is how you find the work for an issue.
 
-`.scratch/` is **gitignored** (`.gitignore:123`). Issues are local to this working copy: they are
-not pushed, not shared, and not backed up. A fresh clone has no issue history at all. Anything
-that must outlive this machine belongs in a commit message, in `docs/`, or in an ADR.
+**These files were in `.scratch/` and gitignored until 2026-09-25, when the whole directory moved
+into `docs/` and became tracked.** That reverses what this document used to say, so beware of
+anything written before that date claiming a ticket is unshared or uncommitted — several tickets
+carried such lines and have been corrected in place.
 
-Two consequences worth knowing before you search:
+Three consequences worth knowing:
 
-- `git ls-files` will never find a ticket. Read the directory instead.
+- **They are tracked, so they are shared.** Anyone with repo access reads them, including
+  contributors who are not working in Claude Code. Write them accordingly. **No secrets**: this
+  already held when the directory was private and matters more now.
+- **Edits belong in commits.** A ticket whose `Status:` changes is a working-tree change like any
+  other; `git status` will show it, and leaving it uncommitted means the next clone disagrees with
+  this one.
 - A ticket's own `Status:` line is the authority on whether it is done, not the commit log.
   Several issues are recorded as done while still carrying deliberately unticked boxes that
   need a real database.
@@ -40,9 +46,9 @@ Two consequences worth knowing before you search:
 
 Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
 
-- **Map**: `.scratch/<effort>/map.md` (the Notes / Decisions-so-far / Fog body).
-- **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
+- **Map**: `docs/<effort>/map.md` (the Notes / Decisions-so-far / Fog body).
+- **Child ticket**: `docs/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
 - **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked when every file it lists is `resolved`.
-- **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
+- **Frontier**: scan `docs/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
 - **Claim**: set `Status: claimed` and save before any work.
 - **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
