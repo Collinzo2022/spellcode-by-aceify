@@ -12,12 +12,15 @@ carrying: the backend engineer working on F2 can now read these directly, and a 
 recoverable from history rather than gone.
 
 **The effort is over as a build, and the last launch blocker is now fixed in code.** Every ticket
-01–24 and 27 is closed. Tickets 25 and 26 remain and **neither is engineering** — both are operator
-work in a dashboard. What is left is finishing the switch off Manus, which is a procedure.
+01–24 and 27 is closed. **Four remain: 25, 26, 28 and 29**, and only 29 is engineering — the other
+three are operator work in a dashboard. What is left is finishing the switch off Manus, which is a
+procedure, and `finish-switch-wizard.sh` walks it. (This sentence read "tickets 25 and 26 remain"
+until 2026-09-26, having been written before 28 and 29 existed.)
 
-**`703e1cf` is pushed.** `main` and `origin/main` are both at `703e1cf`; `git ls-remote` agrees and
-`git reflog show origin/main` records the `update by push`. An earlier revision of this file said the
-commit was unpushed and that nothing below was testable until it was — that is no longer true.
+**`703e1cf` is pushed**, confirmed by `git ls-remote` and by the `update by push` in
+`git reflog show origin/main`. An earlier revision of this file said the commit was unpushed and that
+nothing below was testable until it was — that is no longer true. (It is an ancestor of `main`, not
+its tip; this file deliberately no longer says what the tip is — see "Verified state".)
 **Both hosts have rebuilt from it**, verified by probe on 2026-09-25 (see "Deployment confirmed"),
 so ticket 27's fix is live and stage 10 is unblocked. See "What is left".
 
@@ -234,14 +237,30 @@ still answering the API path with HTML.
   (`SUPABASE_URL, SUPABASE_ANON_KEY not set`, `PAYSTACK_SECRET_KEY not set`). Any other skip, or any
   failure, is new.
 - `npx tsc --noEmit` clean. `npx vite build` clean.
-- `main` and `origin/main` are both `840921e`. Working tree clean, nothing unpushed. **The suite,
-  `tsc` and `vite build` above were last run at `703e1cf`**; the two commits since — `840921e` (the
-  move into `docs/`) and the docs-only commit carrying this correction — touch no code, so nothing
-  should have moved, but no one has re-run them to say so.
-- Four commits landed after the previous handoff's `5753e04`: `18b4bd4` (ticket 24), `285bdf1` (the
-  `req.rawBody` fallback removed), `703e1cf` (ticket 27) and `840921e` (the move into `docs/`). The
-  first two are pushed **and deployed**; `703e1cf` is pushed and confirmed deployed on both hosts.
-  `840921e` is docs-only and changes nothing either host serves.
+- **The last commit that changed code is `703e1cf`** (ticket 27), which is where the three figures
+  above were measured. Everything committed after it is documentation and one shell script, so those
+  figures still describe the code that runs — but nobody has re-run them to say so.
+
+  **This section no longer states what HEAD is.** It said `703e1cf`, then `840921e`, and went stale
+  both times within a day — once inside the very commit that corrected it. A SHA in a file is a claim
+  that rots; the same question answered from git cannot. Ask git:
+
+  ```bash
+  git log --oneline -1 && git status --short && git ls-remote origin main
+  ```
+
+  A clean `status` and an `ls-remote` matching `HEAD` mean nothing is unpushed. And to check whether
+  the figures above have gone stale — i.e. whether code has landed since they were taken:
+
+  ```bash
+  git diff --stat 703e1cf..HEAD -- server client shared
+  ```
+
+  Empty output means the suite, `tsc` and `vite build` results above still hold. Any output means
+  re-run them before trusting this section.
+- `18b4bd4`, `285bdf1` and `703e1cf` are pushed **and deployed**, `703e1cf` confirmed on both hosts
+  ("Deployment confirmed"). Commits after it have been docs-only and change nothing either host
+  serves; the `git diff --stat` above is how you check that is still true.
 - The merged local branch `ticket/14-replay-path-runnable` still exists, as do
   `fix/domain-model-alignment` and `claude/clever-roentgen-440fc0` (a worktree under `.claude/`).
 
