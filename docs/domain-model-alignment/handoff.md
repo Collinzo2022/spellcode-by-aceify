@@ -2,7 +2,8 @@
 
 Rewritten **2026-09-25**, superseding the 2026-09-24 revision, which put `main` at `5753e04` and
 described tickets 24 and 27 as outstanding. Both are done. **Revised 2026-09-28** — see "The payment
-path works", which is the first genuinely new thing since the rewrite. Repo:
+path works", which is the first genuinely new thing since the rewrite, and "The production address
+changed", where ticket 26 is now closed. Repo:
 `C:\Users\aefue\Desktop\Projects\Spellcode\spellcode-by-aceify`.
 
 **Moved 2026-09-25 from `.scratch/domain-model-alignment/` to `docs/domain-model-alignment/`, and
@@ -13,11 +14,14 @@ carrying: the backend engineer working on F2 can now read these directly, and a 
 recoverable from history rather than gone.
 
 **The effort is over as a build, and the last launch blocker is now fixed in code.** Every ticket
-01–24, 27 and **28** is closed. **Three remain: 26, 29 and 30**, and only 29 is engineering — the
-others are operator work in a dashboard. What is left is finishing the switch off Manus, which is a
-procedure, and `finish-switch-wizard.sh` walks it. (This sentence read "tickets 25 and 26 remain"
-until 2026-09-26, having been written before 28 and 29 existed, then "25, 26, 28 and 29" until
-2026-09-28; 25 and 28 are now closed and 30 is new.)
+01–28 and **30** is closed. **One remains: 29**, and it is engineering — but it opens with three
+questions only the user can answer, so it is not pick-up-and-build. What is left besides it is
+finishing the switch off Manus, which is a procedure: **switch stage 11 and the live-mode webhook
+field**, both operator work in a dashboard. `finish-switch-wizard.sh` documents them, but **take them
+by hand** — the wizard has no resume state, so re-running it walks back through its stage 7, which
+cannot succeed. (This sentence read "tickets 25 and 26 remain" until 2026-09-26, having been written
+before 28 and 29 existed, then "25, 26, 28 and 29", then "26, 29 and 30" earlier on 2026-09-28; 26 is
+now closed too.)
 
 **`703e1cf` is pushed**, confirmed by `git ls-remote` and by the `update by push` in
 `git reflog show origin/main`. An earlier revision of this file said the commit was unpushed and that
@@ -31,12 +35,23 @@ so ticket 27's fix is live and stage 10 is unblocked. See "What is left".
 **Production is `https://spellcode-by-aceify-two.vercel.app`.** The `-two` is permanent and
 deliberate. Anyone who "corrects" it will point the project back at a dead site.
 
-**The old address is not dead — it is stale, which is worse.** `https://spellcode-by-aceify.vercel.app`
-still returns 200 and serves the pre-fix 367,903-byte shell, and its API still runs pre-alignment
-server code that **successfully authenticates to the current Supabase project** (it answers with a
-42703 `plans.paid_features does not exist`, i.e. a 400 from a request that was authorized). It cost
-a real stage 10 checkout attempt on 2026-09-24 before anyone noticed. **Ticket 26**: delete or
-disable that Vercel project. Do not use its removal as an excuse to reclaim the unsuffixed name.
+**The old address is removed. 2026-09-28: the stale Vercel project was deleted**, and
+`https://spellcode-by-aceify.vercel.app` now 404s, as does its API path. **Ticket 26 is closed**, and
+its file carries the before-and-after probes.
+
+What it was, kept because it explains four days of confusion: the address was *not dead but stale,
+which is worse*. It returned 200 with the pre-fix 367,903-byte shell, and its API ran pre-alignment
+server code that **successfully authenticated to the current Supabase project** — it answered with a
+42703 `plans.paid_features does not exist`, i.e. a 400 from a request that was authorized. It cost a
+real stage 10 checkout attempt on 2026-09-24 before anyone noticed.
+
+**The freed unsuffixed name was not reclaimed, and must not be.** Deleting that project made the
+nicer name available; taking it would break sign-in. Production stays `-two`, permanently.
+
+**The credential exposure is not undone by the delete.** Whether that project held
+`SUPABASE_SERVICE_ROLE_KEY` or only the anon key was never recorded, and the project is now gone, so
+it cannot be asked. Ticket 26 says to assume the service-role key was exposed; rotating it means
+updating Render's environment in the same sitting. That decision is still open.
 
 ### What went wrong, and how it was found
 
@@ -125,6 +140,11 @@ checkout on the account that cannot start one.
 **It was run on 2026-09-28 and reached stage 7 of 10**, carrying stages 8 and 10 of the switch with
 it. Stages 8, 9 and 10 of the wizard — pause the old Supabase project, delete the stale Vercel
 project, the live webhook field — were still outstanding when this was written.
+
+**Its stage 9 is now done: ticket 26 closed 2026-09-28, walked by hand rather than by the wizard.**
+That is the right way to take the remaining three, because the wizard has no resume state either —
+re-running it to reach stage 8 walks back through stage 7, which cannot succeed and does not notice.
+**Stages 8 and 10 remain**: pause the old Supabase project, and the live-mode webhook field.
 
 Three faults found by running it, none fatal:
 
@@ -294,8 +314,9 @@ the fix introduced: `CONFIG_STORAGE_KEY = "spellcode-supabase-config"`
 served by **both** hosts, alongside the pre-existing `spellcode-supabase-session`. That is direct
 evidence of the fix in production rather than an inference from a filename.
 
-**Ticket 26 is unaffected and still open.** The stale project is still serving its pre-fix shell and
-still answering the API path with HTML.
+**Ticket 26 was unaffected by that deployment and stayed open**, the stale project still serving its
+pre-fix shell and still answering the API path with HTML. **It is closed as of 2026-09-28** — see
+"The production address changed".
 
 ## Verified state, 2026-09-25
 
@@ -400,7 +421,23 @@ a reset is off the table.
    - **The 03:43Z row cannot be reconciled**, by hand or otherwise. It is on the other Paystack
      business. Closed as a no-op; it was test money. Ticket 30.
 3. **Stage 11**, pausing the old Supabase project. Operator, dashboard only.
-4. **Ticket 26**, deleting or disabling the stale Vercel project. Operator, dashboard only.
+
+   **The old project's ref is recorded nowhere** — not in `.env`, not in these docs, not in either
+   wizard. Only the live one is: `jttycbhcziffiukpcwvd`, which is the sole ref in `.env`, shared by
+   `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`, and hardcoded at
+   `finish-switch-wizard.sh:205` so the pause stage can refuse it. So **the old one is identified by
+   exclusion and by age**: the project that is not `jttycbhcziffiukpcwvd` and predates 2026-09-23.
+   Whoever pauses it should write its ref down here, because pausing the wrong one takes production
+   down and the guard is currently "not the other one".
+
+   The live project was confirmed post-alignment by reading it on 2026-09-28, not by trusting the
+   name: `plans.paid_features` returns `42703`, and the three plan rows match ticket 30's readings.
+
+4. ~~**Ticket 26**, deleting or disabling the stale Vercel project.~~ **Done 2026-09-28.** The
+   project was deleted after confirming its Settings → Git read `Bayospel/spellcode-by-aceify`, not
+   `Collinzo2022`. The unsuffixed address 404s; production and its `/api/*` path to Render are
+   unchanged and verified. **The rotation question it raised is still open** — see "The production
+   address changed".
 5. **The launch checklist**, before any real Learner:
    - [ ] **Paystack's live-mode Webhook URL actually set**, and confirmed by eye in the dashboard —
          **on the business confirmed by the `963cdeab` test first** (ticket 30). Test and live are

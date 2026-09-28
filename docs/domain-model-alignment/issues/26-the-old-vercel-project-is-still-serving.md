@@ -1,9 +1,14 @@
 # 26: the old Vercel address is still live, running old code against the live database
 
-**Status:** open. Found 2026-09-24, immediately after it cost a real checkout attempt. **Operator
-work** — the remedy is in the Vercel dashboard.
+**Status:** **closed 2026-09-28.** The stale Vercel project was deleted by the operator, having
+confirmed its Settings → Git read `Bayospel/spellcode-by-aceify` rather than `Collinzo2022`. Found
+2026-09-24, immediately after it cost a real checkout attempt. **Operator work** — the remedy was in
+the Vercel dashboard.
 
-This is not the same as "the old address exists". It is serving, it is stale, and it is
+Everything below is kept in the present tense as the record of what was wrong. See "Closed" at the
+foot for the verification.
+
+This was not the same as "the old address exists". It was serving, it was stale, and it was
 authenticated to the current Supabase project.
 
 ## The facts
@@ -61,9 +66,43 @@ means updating Render's environment in the same sitting.
 
 ## Done when
 
-- [ ] `https://spellcode-by-aceify.vercel.app/` no longer serves the application.
-- [ ] Nothing outside the `-two` project and Render holds credentials for the Supabase project.
-- [ ] The handoff says the old address is **removed**, not merely superseded.
+- [x] `https://spellcode-by-aceify.vercel.app/` no longer serves the application. **404 since
+      2026-09-28.**
+- [x] Nothing outside the `-two` project and Render holds credentials for the Supabase project. Met
+      by deletion — the project that held them no longer exists. **But see "The exposure is not
+      undone" below: this box closes the hole, it does not undo the past exposure.**
+- [x] The handoff says the old address is **removed**, not merely superseded.
+
+## Closed — verified 2026-09-28
+
+Four probes, before and after, run from the repo:
+
+| | Before | After |
+|---|---|---|
+| `spellcode-by-aceify.vercel.app/` | 200, 367,903 bytes | **404**, 107 bytes |
+| its `/api/trpc/billing.accessOptions` | 500, `42703 column plans.paid_features does not exist` | **404** |
+| `spellcode-by-aceify-two.vercel.app/` | 200, 615 bytes | 200, 615 bytes — unchanged |
+| production's `/api/trpc/billing.accessOptions` | — | **200**, the three plan rows, served through Render |
+
+The last row matters as much as the first: it proves the delete did not disturb the `/api/*` rewrite
+to Render. The freed unsuffixed name was **not** reclaimed.
+
+The 367,903-byte reading taken on 2026-09-28 before the delete was **byte-for-byte identical** to the
+one in "The facts" from 2026-09-24, and its API returned the same `42703`. So the deployment sat
+unchanged and reachable for four days; nothing had quietly fixed it.
+
+### The exposure is not undone
+
+Deleting the project stops the leak going forward. It does not change the fact that a
+Supabase credential lived on a public deployment for at least four days, authorized against the
+**current** project — proven by `42703` being a *400 from the database*, the same error the
+service-role key returns for that column today.
+
+**Not established, and worth establishing:** whether that project's environment held
+`SUPABASE_SERVICE_ROLE_KEY` or only `SUPABASE_ANON_KEY`. The operator was asked to note it before
+deleting; it is not recorded here, and once the project is gone Vercel cannot be asked. That
+distinction is the whole of how urgent rotation is, so **in its absence, assume the service-role key
+was exposed.** Rotating it means updating Render's environment in the same sitting.
 
 ## Related
 
