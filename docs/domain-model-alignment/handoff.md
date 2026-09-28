@@ -475,12 +475,23 @@ a reset is off the table.
    - [ ] A live-money Paystack test, with Render on the live keys and the live webhook
          (`todo.md:48`).
 
-     **The cutover is three coupled changes, not two** (ticket 32): Render's secret key and the
-     client's public key to live; the live webhook set (done); **and `plans.paystack_plan_code`
-     patched to the live plan codes**, via `billing.updatePlan`. Move the first two without the third
-     and installment checkouts break at `server/paystack.ts:46`. Move the third early and test-mode
-     installment work breaks instead. The third is the invisible one, and it is why this item is
-     listed as three things.
+     **The cutover is three coupled changes, not two** (ticket 32, settled by **ADR 0004**): Render's
+     secret key and the client's public key to live; the live webhook set (done); **and
+     `plans.paystack_plan_code` patched to the live plan codes**, via `billing.updatePlan`. Move the
+     first two without the third and installment checkouts break at `server/paystack.ts:46`. Move the
+     third early and test-mode installment work breaks instead. The third is the invisible one, and it
+     is why this item is listed as three things.
+
+     **After cutover, exercising the payment path needs a separate database**, not a test mode against
+     this one — ADR 0004 decided that mode is a property of the environment, so production is only ever
+     live. Nothing needs that second environment today; the first billing change after launch will.
+
+   - [ ] **Exclude the stage 10 test Subscription from any revenue figure.** Production holds an
+         `active` Subscription for `5499b299…`, 1 of 1 installments, created 2026-09-27 — **Full Access
+         granted by a test card**. `payment_transactions` has no mode column, so nothing distinguishes
+         it from a real purchase and `adminLearnerBilling` will count it. Decided 2026-09-28: the row
+         **stays**, because it is the owner's own stage 10 account and deleting it erases the evidence
+         that stage 10 passed. The exclusion is by `user_id`, by hand. See ticket 32 and ADR 0004.
    - [ ] A Render instance that does not sleep. **A stage 10 blocker, not just a launch item.**
    - [ ] Custom SMTP for Auth email, in place of the rate-limited built-in sender.
    - [ ] Both Forge follow-ups done.

@@ -95,8 +95,14 @@ amount, never in what they grant.
 **Subscription** — a Learner's holding of a Plan, with a status and validity period. Full
 Access is true when a Learner holds at least one Subscription in good standing.
 
-**Payment** — a single verified money movement against a Subscription, matched to a Paystack
-reference.
+**Payment** — a single verified movement of **real money** against a Subscription, matched to a
+Paystack reference. The money is what makes it a Payment: a charge the payment provider accepted
+without money moving is a Test Charge, never a Payment, whatever its record says.
+
+**Test Charge** — a charge accepted by the payment provider in its test mode. It moves no money,
+grants nothing anyone paid for, and is never counted as revenue. SpellCode keeps one production
+world and it is the real one, so a Test Charge is something that happened *before* launch or
+against a different database — never an ordinary event in production. See ADR 0004.
 
 ## Records
 

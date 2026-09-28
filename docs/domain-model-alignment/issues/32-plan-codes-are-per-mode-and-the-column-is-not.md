@@ -76,32 +76,58 @@ holds test keys, and any test-mode installment work breaks instead. **They have 
 which is precisely the kind of coupling that has failed twice already in this project when it was
 left implicit.
 
-## The open question, which is the user's
+## The open question — **settled 2026-09-28, ADR 0004**
 
-**Should the column carry both modes?** Three answers, and the decision belongs to the owner:
+**Should the column carry both modes? No.** Mode is a property of the **environment**, not of the
+domain: SpellCode keeps one production world and it is the live one. The column stays single and is
+patched at cutover. Exercising the payment path after launch means a **separate database**, not a
+second column.
 
-- **Leave it single and flip it at cutover.** Cheapest, and correct if test-mode installment testing
-  is never wanted again. It makes the cutover irreversible in practice: going back to test means
-  editing the column back.
-- **Two columns** (`paystack_plan_code_test`, `paystack_plan_code_live`), chosen by the mode the
-  secret key is in. Honest about the domain — a plan genuinely has two identities — and it makes the
-  three-way cutover a one-way switch instead. Costs a migration and touches all three read sites.
-- **Derive it at Paystack** rather than storing it, looking the plan up by name. Removes the column
-  but adds a network call to a hot path and a new failure mode.
+The three options were: leave it single and flip at cutover (**chosen**); two columns, one per mode;
+or look the plan up at Paystack by name. ADR 0004 records why the two-column option was rejected —
+briefly, its purpose is to let test and live coexist against one database, and that is what put an
+unpaid `active` Subscription into production.
 
-**This is a `CONTEXT.md` question as much as a schema one**: the domain currently says a Plan *has a*
-Paystack plan code, and the truth is it has one **per mode**. `domain-modeling` is the skill for
-settling that, and the decision is hard to reverse once installments are sold, which makes it ADR
-material.
+### What the question turned up, which was worse than the question
+
+**The database cannot tell a test charge from a real one.** `payment_transactions` has no mode
+column — checked: `provider`, `paystack_reference`, `paystack_transaction_id`, `amount_minor`,
+`currency`, `status`, `paid_at`, `provider_payload`, and nothing else. Paystack persists the
+distinction as `"domain":"test"`; the application discards it.
+
+Production currently holds:
+
+```
+user 5499b299…   subscription active   installments_paid 1/1   created 2026-09-27T19:01
+```
+
+That is switch stage 10 — **Full Access granted by a test card**, indistinguishable in the data from
+a Learner who paid. `CONTEXT.md` had already ruled on this without anyone noticing: a **Payment** is
+"a single verified money movement", so by the project's own glossary that row is not a Payment.
+
+**Decided: the row stays**, recorded here rather than deleted, because it is the owner's own stage 10
+account and deleting it would erase the evidence that stage 10 passed. **It must be excluded from any
+revenue figure**, and with no mode column that exclusion is by `user_id`, by hand. `adminLearnerBilling`
+(`server/routers/billing.ts:30`) reports `latest_payment_amount_minor` across all Learners and will
+include it.
+
+`CONTEXT.md` gained **Test Charge** for this, and sharpened **Payment** to say the money is what makes
+it one.
 
 ## Done when
 
 - [ ] The live plan codes are recorded somewhere durable — this file or the handoff — so a cutover
-      does not depend on someone reopening the Paystack dashboard.
-- [ ] The question above is decided and, if it changes the schema, recorded as an ADR.
-- [ ] The launch checklist says the cutover is **three** coupled changes, not two.
+      does not depend on someone reopening the Paystack dashboard. **Still open**; the plans exist in
+      Paystack's live mode, and their `PLN_…` codes have not been written down anywhere.
+- [x] The question above is decided and, if it changes the schema, recorded as an ADR. **ADR 0004**,
+      accepted 2026-09-28. It changes no schema, which is the decision.
+- [x] The launch checklist says the cutover is **three** coupled changes, not two.
 - [ ] Installments are either switched on with the live codes in place, or **deliberately withheld**
       and recorded as withheld.
+
+**What remains here is operator work, not design.** Fetch the two live `PLN_…` codes from the
+Paystack dashboard in live mode, record them, and apply them with `billing.updatePlan` — at cutover,
+together with the keys, not before.
 
 ## Related
 
