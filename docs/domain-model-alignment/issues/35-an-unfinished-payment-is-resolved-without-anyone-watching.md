@@ -77,6 +77,11 @@ The two-hour figure is a judgement, not a derivation, and it is **the same cutof
 in-progress guard uses** — defined once, so the guard and the sweep cannot disagree about when an
 attempt is dead.
 
+Ticket 34 landed it as `ABANDONED_CHECKOUT_CUTOFF_MS`, with `abandonedCheckoutCutoff()` for the
+timestamp, both exported from `server/paystack.ts`. **Import them. Do not restate two hours.** Note
+that ticket 34's guard blocks on `initialized` alone, deliberately narrower than the candidate set
+below — its reasoning is in that ticket's Comments, and it does not change what this sweep sweeps.
+
 ## Flagging has to survive a restart
 
 There is no alerting in this project. A log line is not enough: the host keeps logs briefly and loses

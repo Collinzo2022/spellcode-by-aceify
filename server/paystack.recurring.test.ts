@@ -3,13 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { supabaseRequest } = vi.hoisted(() => ({ supabaseRequest: vi.fn() }));
 vi.mock("./supabase", () => ({ supabaseAdminRequest: supabaseRequest }));
 import { findOrCreateRecurringPayment } from "./paystack";
+import { TEST_INSTALLMENT_PLAN } from "./testing/paystackPlans";
 
 const event = { reference: "renewal-002", amount: 4000000, currency: "NGN", metadata: { user_id: "learner-1", plan_code: "full-access-3-month" }, plan: { plan_code: "PLN_3MONTH" }, customer: { customer_code: "CUS_123" } };
 
 describe("recurring Paystack payment records", () => {
   beforeEach(() => supabaseRequest.mockReset());
   it("creates a new payment record for a unique recurring charge reference", async () => {
-    supabaseRequest.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: "plan-1", code: "full-access-3-month", name: "Full Access", currency: "NGN", amount_minor: 4000000, interval: "monthly", max_installments: 3, paystack_plan_code: "PLN_3MONTH", is_active: true }]).mockResolvedValueOnce([{ id: "sub-1", user_id: "learner-1", plan_id: "plan-1" }]).mockResolvedValueOnce([{ id: "payment-2", user_id: "learner-1", plan_id: "plan-1", paystack_reference: "renewal-002", amount_minor: 4000000, currency: "NGN", status: "initialized" }]);
+    supabaseRequest.mockResolvedValueOnce([]).mockResolvedValueOnce([TEST_INSTALLMENT_PLAN]).mockResolvedValueOnce([{ id: "sub-1", user_id: "learner-1", plan_id: "plan-1" }]).mockResolvedValueOnce([{ id: "payment-2", user_id: "learner-1", plan_id: "plan-1", paystack_reference: "renewal-002", amount_minor: 4000000, currency: "NGN", status: "initialized" }]);
     await expect(findOrCreateRecurringPayment(event)).resolves.toMatchObject({ id: "payment-2", paystack_reference: "renewal-002" });
     expect(supabaseRequest).toHaveBeenCalledTimes(4);
   });

@@ -2,9 +2,11 @@ import crypto from "node:crypto";
 import express from "express";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { supabaseRequest, payments, subscription, race } = vi.hoisted(() => ({
+const { supabaseRequest, payments, subscription, createdSubscriptions, race } = vi.hoisted(() => ({
   payments: new Map<string, { id: string; user_id: string; plan_id: string; paystack_reference: string; amount_minor: number; currency: string; status: string }>(),
-  subscription: { installments_paid: 1 },
+  /** `present: false` models a Learner whose first payment is landing, the path every checkout takes since ticket 34. */
+  subscription: { installments_paid: 1, present: true },
+  createdSubscriptions: [] as Array<Record<string, unknown>>,
   /**
    * Model a second writer that won the race between this request's read and its
    * write: reads answer the row as it was, writes meet the row as it now is.
@@ -18,6 +20,7 @@ vi.mock("./supabase", () => ({ supabaseAdminRequest: supabaseRequest }));
 
 import { createSpellCodeApp } from "./app";
 import { registerPaystackWebhook } from "./paystack";
+import { TEST_INSTALLMENT_PLAN } from "./testing/paystackPlans";
 
 const prefersRepresentation = (init?: { headers?: HeadersInit }) => new Headers(init?.headers).get("Prefer")?.includes("return=representation") ?? false;
 
@@ -26,7 +29,7 @@ const event = { event: "charge.success", data: { id: 9002, reference: "renewal-0
 describe("Paystack recurring webhook route", () => {
   let app: express.Express;
   beforeEach(() => {
-    payments.clear(); subscription.installments_paid = 1; race.staleRead = false; supabaseRequest.mockReset();
+    payments.clear(); subscription.installments_paid = 1; subscription.present = true; createdSubscriptions.length = 0; race.staleRead = false; supabaseRequest.mockReset();
     supabaseRequest.mockImplementation(async (path: string, init?: { method?: string; body?: string; headers?: HeadersInit }) => {
       const body = init?.body ? JSON.parse(init.body) : {};
       if (path.includes("paystack_webhook_events?on_conflict")) return [];
@@ -36,8 +39,9 @@ describe("Paystack recurring webhook route", () => {
         if (!record) return [];
         return [race.staleRead ? { ...record, status: "initialized" } : record];
       }
-      if (path.includes("plans?paystack_plan_code")) return [{ id: "plan-1", code: "full-access-3-month", name: "Full Access", currency: "NGN", amount_minor: 4000000, interval: "monthly", max_installments: 3, paystack_plan_code: "PLN_3MONTH", is_active: true }];
-      if (path.includes("subscriptions?user_id") && path.includes("select=id,user_id,plan_id")) return [{ id: "sub-1", user_id: "learner-1", plan_id: "plan-1" }];
+      if (path.includes("plans?paystack_plan_code")) return [TEST_INSTALLMENT_PLAN];
+      if (path.includes("subscriptions?user_id") && path.includes("select=id,user_id,plan_id")) return subscription.present ? [{ id: "sub-1", user_id: "learner-1", plan_id: "plan-1" }] : [];
+      if (path === "/rest/v1/subscriptions" && init?.method === "POST") { createdSubscriptions.push(body); return []; }
       if (path.includes("payment_transactions?on_conflict")) { const record = { id: "payment-2", user_id: body.user_id, plan_id: body.plan_id, paystack_reference: body.paystack_reference, amount_minor: body.amount_minor, currency: body.currency, status: "initialized" }; payments.set(record.paystack_reference, record); return [record]; }
       // PostgREST applies the request's own filters to the UPDATE, so a row that no longer matches
       // them is not written and is not echoed back. A stub that always wrote would hide exactly the
@@ -56,8 +60,8 @@ describe("Paystack recurring webhook route", () => {
         record.status = body.status;
         return [record];
       }
-      if (path.includes("plans?id=eq.plan-1")) return [{ id: "plan-1", interval: "monthly", max_installments: 3 }];
-      if (path.includes("subscriptions?user_id") && path.includes("installments_paid")) return [{ id: "sub-1", installments_paid: subscription.installments_paid, installments_due: 3 }];
+      if (path.includes("plans?id=eq.plan-1")) return [{ id: "plan-1", code: "full-access-3-month", interval: "monthly", max_installments: 3 }];
+      if (path.includes("subscriptions?user_id") && path.includes("installments_paid")) return subscription.present ? [{ id: "sub-1", installments_paid: subscription.installments_paid, installments_due: 3 }] : [];
       if (path.includes("subscriptions?id=eq.sub-1") && init?.method === "PATCH") { subscription.installments_paid = body.installments_paid; return []; }
       return [];
     });
@@ -77,6 +81,22 @@ describe("Paystack recurring webhook route", () => {
     await expect(postEvent()).resolves.toMatchObject({ status: 200 });
     expect(payments.get("renewal-002")?.status).toBe("success");
     expect(subscription.installments_paid).toBe(2);
+  });
+
+  // Since ticket 34 a checkout writes no Subscription, so this branch carries every Learner's
+  // first payment rather than being the rare one. A Learner who pays and gets no Subscription is
+  // the worst outcome the payment path has, and nothing else in the suite exercises the create.
+  it("creates the Subscription when the verified payment is the Learner's first", async () => {
+    payments.set("renewal-002", { id: "payment-1", user_id: "learner-1", plan_id: "plan-1", paystack_reference: "renewal-002", amount_minor: 4000000, currency: "NGN", status: "initialized" });
+    subscription.present = false;
+
+    await expect(postEvent()).resolves.toMatchObject({ status: 200 });
+
+    expect(createdSubscriptions).toHaveLength(1);
+    expect(createdSubscriptions[0]).toMatchObject({ user_id: "learner-1", plan_id: "plan-1", status: "active", installments_paid: 1, installments_due: 3 });
+    // The checkout write that used to snapshot the plan code is gone, so this branch has to.
+    // Nothing reads the column yet, which is exactly why its loss would go unnoticed.
+    expect(createdSubscriptions[0].plan_snapshot).toMatchObject({ plan_code: "full-access-3-month" });
   });
 
   // Paystack signs the bytes it sends, and those bytes do not survive a JSON round trip: spacing,

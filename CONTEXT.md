@@ -93,7 +93,9 @@ ADR 0001.
 amount, never in what they grant.
 
 **Subscription** — a Learner's holding of a Plan, with a status and validity period. Full
-Access is true when a Learner holds at least one Subscription in good standing.
+Access is true when a Learner holds at least one Subscription in good standing. A Subscription
+**begins at verified payment**: a Learner who has started paying and not finished holds nothing,
+and no record of their intention is a Subscription. See ADR 0005.
 
 **Payment** — a single verified movement of **real money** against a Subscription, matched to a
 Paystack reference. The money is what makes it a Payment: a charge the payment provider accepted

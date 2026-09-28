@@ -39,18 +39,56 @@ export function buildPaystackInitializePayload(input: { email: string; reference
   return payload;
 }
 
+/**
+ * How long an unfinished checkout stays alive.
+ *
+ * One number, read by two things that must agree: this module's in-progress guard,
+ * and the reconciliation sweep that declares a dead checkout dead (ticket 35). If
+ * the guard held on longer than the sweep, a Learner would be barred by a row
+ * nothing was going to clear, which is the lockout ticket 34 removed. Two hours is
+ * a judgement - long enough to outlast Paystack's own retries and a Learner who is
+ * slow finding their card - not a derivation.
+ */
+export const ABANDONED_CHECKOUT_CUTOFF_MS = 2 * 60 * 60 * 1000;
+
+/** The oldest creation time at which a checkout still counts as live. */
+export function abandonedCheckoutCutoff() {
+  return new Date(Date.now() - ABANDONED_CHECKOUT_CUTOFF_MS).toISOString();
+}
+
+/**
+ * The payment state of a checkout nobody has resolved yet.
+ *
+ * Narrower than `UNSETTLED_PAYMENT_STATES` on purpose, and the difference is not an
+ * oversight. That set answers "could this still become `success`?", which `abandoned`
+ * and `failed` can. This one answers "is the Learner mid-payment right now?", which
+ * they are not: a declined card is the commonest reason anyone starts over, and
+ * refusing them for two hours would be the same lockout wearing a different row.
+ */
+const CHECKOUT_IN_PROGRESS_STATE = "initialized";
+
 export async function initializeCheckout(input: { userId: string; email: string; planCode: string; callbackUrl: string }) {
   const plans = await supabaseAdminRequest<Plan[]>(`/rest/v1/plans?code=eq.${encodeURIComponent(input.planCode)}&select=id,code,name,currency,amount_minor,interval,max_installments,paystack_plan_code,is_active`);
   const plan = plans[0];
   if (!plan?.is_active) throw new Error("This access plan is not available right now.");
   if (plan.interval !== "one_time" && !plan.paystack_plan_code) throw new Error("This installment plan is not configured yet.");
   if (!input.email) throw new Error("A verified email address is required to start payment.");
-  const existingAccess = await supabaseAdminRequest<Array<{ status: string }>>(`/rest/v1/subscriptions?user_id=eq.${encodeURIComponent(input.userId)}&plan_id=eq.${plan.id}&status=in.(pending,active,past_due)&select=status&limit=1`);
-  if (existingAccess.length > 0) throw new Error(existingAccess[0].status === "pending" ? "A payment for this plan is already in progress." : "You already have access through this plan.");
+  // One check used to answer both "do you already have access?" and "have you already
+  // started paying?", by reading a `pending` Subscription this function no longer writes.
+  // They are two questions against two tables, and they get two answers: a Learner refused
+  // because an attempt is in flight is not a Learner who has what they are trying to buy.
+  const existingAccess = await supabaseAdminRequest<Array<{ status: string }>>(`/rest/v1/subscriptions?user_id=eq.${encodeURIComponent(input.userId)}&plan_id=eq.${plan.id}&status=in.(active,past_due)&select=status&limit=1`);
+  if (existingAccess.length > 0) throw new Error("You already have access through this plan.");
+  // Bounded by age, so an attempt nothing ever swept stops blocking on its own. A sleeping
+  // server must not be able to lock anyone out of a plan permanently.
+  const inProgress = await supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/payment_transactions?user_id=eq.${encodeURIComponent(input.userId)}&plan_id=eq.${plan.id}&status=eq.${CHECKOUT_IN_PROGRESS_STATE}&created_at=gte.${encodeURIComponent(abandonedCheckoutCutoff())}&select=id&limit=1`);
+  if (inProgress.length > 0) throw new Error("A payment for this plan is already in progress.");
   const reference = `spellcode-${crypto.randomUUID()}`;
   const result = await paystackRequest<{ authorization_url: string; access_code: string; reference: string }>("/transaction/initialize", { method: "POST", body: JSON.stringify(buildPaystackInitializePayload({ email: input.email, reference, plan, callbackUrl: input.callbackUrl, userId: input.userId })) });
   const [payment] = await supabaseAdminRequest<PaymentRecord[]>("/rest/v1/payment_transactions", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ user_id: input.userId, plan_id: plan.id, paystack_reference: result.reference, amount_minor: plan.amount_minor, currency: plan.currency, status: "initialized", provider_payload: { access_code: result.access_code, plan_code: plan.code } }) });
-  await supabaseAdminRequest("/rest/v1/subscriptions", { method: "POST", body: JSON.stringify({ user_id: input.userId, plan_id: plan.id, status: "pending", installments_due: plan.max_installments ?? 1, installments_paid: 0, plan_snapshot: { plan_code: plan.code } }) });
+  // No Subscription is written here. A Learner who is looking at the Paystack page holds
+  // nothing, and a row claiming otherwise is what barred them from ever buying the plan.
+  // `recordVerifiedPayment` creates it when the money arrives - see ADR 0005.
   return { authorizationUrl: result.authorization_url, reference: result.reference, paymentId: payment.id };
 }
 
@@ -92,15 +130,24 @@ async function recordVerifiedPayment(payment: PaymentRecord, transaction: { id: 
   if (settledRows === undefined) throw new Error("Payment transition was written without asking for the affected rows");
   if (!settledRows.length) return;
   if (payment.plan_id) {
-    const plans = await supabaseAdminRequest<Plan[]>(`/rest/v1/plans?id=eq.${payment.plan_id}&select=id,interval,max_installments`);
+    // `code` is selected because the create below snapshots it. The write this replaced ran at
+    // checkout and had the Plan in hand; this one starts from a payment row and has to fetch it.
+    const plans = await supabaseAdminRequest<Plan[]>(`/rest/v1/plans?id=eq.${payment.plan_id}&select=id,code,interval,max_installments`);
     const plan = plans[0];
+    // Since ticket 34 nothing creates a `pending` Subscription, so this is the path every
+    // first payment takes rather than the rare branch it used to be. `pending` stays in the
+    // filter only so a row predating that change is credited instead of duplicated; when the
+    // state is gone from the database it should go from here too.
     const subscriptions = await supabaseAdminRequest<Array<{ id: string; installments_paid: number; installments_due: number | null }>>(`/rest/v1/subscriptions?user_id=eq.${payment.user_id}&plan_id=eq.${payment.plan_id}&status=in.(pending,active,past_due)&select=id,installments_paid,installments_due&order=created_at.desc&limit=1`);
     const subscription = subscriptions[0];
     const installmentsDue = subscription?.installments_due ?? plan?.max_installments ?? 1;
     const installmentsPaid = Math.min(installmentsDue, (subscription?.installments_paid ?? 0) + 1);
     const patch = { status: "active", paystack_customer_code: transaction.customer?.customer_code ?? null, current_period_start: new Date().toISOString(), installments_paid: installmentsPaid, installments_due: installmentsDue, last_payment_at: transaction.paid_at ?? new Date().toISOString(), updated_at: new Date().toISOString() };
     if (subscription) await supabaseAdminRequest(`/rest/v1/subscriptions?id=eq.${subscription.id}`, { method: "PATCH", body: JSON.stringify(patch) });
-    else await supabaseAdminRequest("/rest/v1/subscriptions", { method: "POST", body: JSON.stringify({ user_id: payment.user_id, plan_id: payment.plan_id, ...patch, plan_snapshot: { source: "paystack" } }) });
+    // The snapshot carries the plan code because the checkout write that used to carry it is gone,
+    // and this branch is now every Learner's first Subscription. Without it no Subscription would
+    // record which Plan it was sold as - a silent loss, since nothing reads the column yet.
+    else await supabaseAdminRequest("/rest/v1/subscriptions", { method: "POST", body: JSON.stringify({ user_id: payment.user_id, plan_id: payment.plan_id, ...patch, plan_snapshot: { plan_code: plan?.code ?? null, source: "paystack" } }) });
   }
 }
 
