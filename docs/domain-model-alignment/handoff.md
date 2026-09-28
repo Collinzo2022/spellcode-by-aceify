@@ -14,14 +14,15 @@ carrying: the backend engineer working on F2 can now read these directly, and a 
 recoverable from history rather than gone.
 
 **The effort is over as a build, and the last launch blocker is now fixed in code.** Every ticket
-01–28 and **30** is closed. **One remains: 29**, and it is engineering — but it opens with three
-questions only the user can answer, so it is not pick-up-and-build. What is left besides it is
-finishing the switch off Manus, which is a procedure: **switch stage 11 and the live-mode webhook
-field**, both operator work in a dashboard. `finish-switch-wizard.sh` documents them, but **take them
-by hand** — the wizard has no resume state, so re-running it walks back through its stage 7, which
-cannot succeed. (This sentence read "tickets 25 and 26 remain" until 2026-09-26, having been written
-before 28 and 29 existed, then "25, 26, 28 and 29", then "26, 29 and 30" earlier on 2026-09-28; 26 is
-now closed too.)
+01–28 and **30** is closed. **Two remain: 29 and 31.** Only 29 is engineering, and it opens with three
+questions only the user can answer, so it is not pick-up-and-build; **31 is operator work the owner
+cannot currently complete**, because the project it concerns is in an organization they do not
+administer. What is left besides them is **the live-mode webhook field**, a dashboard check.
+`finish-switch-wizard.sh` documents the remainder, but **take it by hand** — the wizard has no resume
+state, so re-running it walks back through its stage 7, which cannot succeed. (This sentence read
+"tickets 25 and 26 remain" until 2026-09-26, having been written before 28 and 29 existed, then
+"25, 26, 28 and 29", then "26, 29 and 30" earlier on 2026-09-28; 26 closed that day and 31 was found
+the same afternoon.)
 
 **`703e1cf` is pushed**, confirmed by `git ls-remote` and by the `update by push` in
 `git reflog show origin/main`. An earlier revision of this file said the commit was unpushed and that
@@ -420,18 +421,28 @@ a reset is off the table.
      that left no trail. Ticket 30 asks for it to be established.
    - **The 03:43Z row cannot be reconciled**, by hand or otherwise. It is on the other Paystack
      business. Closed as a no-op; it was test money. Ticket 30.
-3. **Stage 11**, pausing the old Supabase project. Operator, dashboard only.
+3. **Stage 11**, pausing the old Supabase project. Operator, dashboard only. **Half done
+   2026-09-28, and the remaining half is ticket 31.**
 
-   **The old project's ref is recorded nowhere** — not in `.env`, not in these docs, not in either
-   wizard. Only the live one is: `jttycbhcziffiukpcwvd`, which is the sole ref in `.env`, shared by
-   `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY`, and hardcoded at
-   `finish-switch-wizard.sh:205` so the pause stage can refuse it. So **the old one is identified by
-   exclusion and by age**: the project that is not `jttycbhcziffiukpcwvd` and predates 2026-09-23.
-   Whoever pauses it should write its ref down here, because pausing the wrong one takes production
-   down and the guard is currently "not the other one".
+   **There are three Supabase projects, not two.** Every document in this effort assumed two,
+   including both wizards. Measured 2026-09-28 by unauthenticated `GET /rest/v1/`, which tells a
+   running project (`401`) from a paused one (does not resolve):
 
-   The live project was confirmed post-alignment by reading it on 2026-09-28, not by trusting the
-   name: `plans.paid_features` returns `42703`, and the three plan rows match ticket 30's readings.
+   | ref | | |
+   |---|---|---|
+   | `jttycbhcziffiukpcwvd` | running | **live production**, created 2026-09-23 |
+   | `geewhajddtzoisumbbek` | **paused 2026-09-28** | an intermediate attempt |
+   | `mgsbipibzzwrvnseftar` | **running** | the Manus-era project — **the one stage 11 means**, and it **cannot be paused**: it is in an organization the owner is not an admin of |
+
+   So the pause that happened was correct but was not the stage. **Ticket 31** carries the rest: the
+   exposure, what is not yet established about it, and the cheapest mitigation (rotate its keys, which
+   breaks nothing since nothing uses them).
+
+   The live project was confirmed post-alignment by reading it, not by trusting the ref:
+   `plans.paid_features` returns `42703`, its three plan rows match ticket 30's, and the owner
+   confirmed in the dashboard that `.env`'s anon and service-role keys both belong to it.
+   `finish-switch-wizard.sh:438` guards this stage with "do not pause `jttycbhcziffiukpcwvd`" — correct,
+   and insufficient, because it names the project to avoid rather than the project to act on.
 
 4. ~~**Ticket 26**, deleting or disabling the stale Vercel project.~~ **Done 2026-09-28.** The
    project was deleted after confirming its Settings → Git read `Bayospel/spellcode-by-aceify`, not
