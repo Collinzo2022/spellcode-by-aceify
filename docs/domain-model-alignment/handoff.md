@@ -1,7 +1,8 @@
 # Handoff — Domain Model Alignment (SpellCode by Aceify)
 
 Rewritten **2026-09-25**, superseding the 2026-09-24 revision, which put `main` at `5753e04` and
-described tickets 24 and 27 as outstanding. Both are done. Repo:
+described tickets 24 and 27 as outstanding. Both are done. **Revised 2026-09-28** — see "The payment
+path works", which is the first genuinely new thing since the rewrite. Repo:
 `C:\Users\aefue\Desktop\Projects\Spellcode\spellcode-by-aceify`.
 
 **Moved 2026-09-25 from `.scratch/domain-model-alignment/` to `docs/domain-model-alignment/`, and
@@ -12,10 +13,11 @@ carrying: the backend engineer working on F2 can now read these directly, and a 
 recoverable from history rather than gone.
 
 **The effort is over as a build, and the last launch blocker is now fixed in code.** Every ticket
-01–24 and 27 is closed. **Four remain: 25, 26, 28 and 29**, and only 29 is engineering — the other
-three are operator work in a dashboard. What is left is finishing the switch off Manus, which is a
+01–24, 27 and **28** is closed. **Three remain: 26, 29 and 30**, and only 29 is engineering — the
+others are operator work in a dashboard. What is left is finishing the switch off Manus, which is a
 procedure, and `finish-switch-wizard.sh` walks it. (This sentence read "tickets 25 and 26 remain"
-until 2026-09-26, having been written before 28 and 29 existed.)
+until 2026-09-26, having been written before 28 and 29 existed, then "25, 26, 28 and 29" until
+2026-09-28; 25 and 28 are now closed and 30 is new.)
 
 **`703e1cf` is pushed**, confirmed by `git ls-remote` and by the `update by push` in
 `git reflog show origin/main`. An earlier revision of this file said the commit was unpushed and that
@@ -94,9 +96,9 @@ Ticket 20's wizard is `docs/domain-model-alignment/switch-wizard.sh`, 12 stages.
 | 5 Render service | done — `https://spellcode-backend.onrender.com`, healthy |
 | 6 Point the web at Render | done 2026-09-24, on the `-two` address: `application/json`, bundle `index-C3D4LG3z.js`, matching Render's build exactly |
 | 7 Seed and check through the site | done 2026-09-24 — signup, email confirmation, sign-in, seed data and the dashboard render all verified |
-| 8 Paystack webhook → Render | **NOT done. The URL was never configured** — the dashboard's Test Webhook URL was found empty on 2026-09-25, which is the whole of ticket 28. The endpoint itself is verified; only the dashboard field is missing. See below |
+| 8 Paystack webhook → Render | **done 2026-09-27.** The Test Webhook URL was set, and delivery is proven rather than assumed: a `charge.success` row arrived at 19:01:36Z with `processing_error: null`. Ticket 28 closed for test mode. Live mode is a separate field and still unchecked |
 | 9 Local checks against the new project | done 2026-09-24 — 190 passed, 0 skipped, 0 failed. Now 217, re-run after `703e1cf` was committed |
-| 10 Acceptance in test mode | **ran 2026-09-25 03:43Z and failed — see ticket 28.** The card charge succeeded at Paystack; the application recorded nothing, because stage 8 was never actually completed. **Blocked on stage 8 being done for real**, then re-run. The 03:43Z payment stays orphaned either way and needs reconciling by hand |
+| 10 Acceptance in test mode | **passed 2026-09-27 19:01Z**, on the second test Learner. `spellcode-963cdeab-…`, ₦120,000, `success`, subscription `active` 1/1. The first attempt, 2026-09-25 03:43Z, failed and is ticket 30 — closed as a no-op, test money on another Paystack business |
 | 11 Pause the old Supabase project | not done — operator only |
 | 12 Done | — |
 
@@ -113,23 +115,89 @@ bash docs/domain-model-alignment/finish-switch-wizard.sh
 ```
 
 It covers stage 8 (the webhook URL, ticket 28), waking Render, a second test Learner, stage 10's
-checkout, proving a `charge.success` row actually arrived, reconciling the orphaned 03:43Z payment
-through `/payment/complete?reference=…` rather than by editing rows, stage 11, ticket 26, and a look
-at the live-mode webhook field. It asks for no secrets, and its checks read `.env` and send nothing
+checkout, proving a `charge.success` row actually arrived, an attempt at reconciling the orphaned
+03:43Z payment through `/payment/complete?reference=…` **which cannot succeed** (ticket 30), stage
+11, ticket 26, and a look at the live-mode webhook field. It asks for no secrets, and its checks read `.env` and send nothing
 but GET. Stages 5, 7, 8 and 9 each confirm before they act, and it refuses to let you pause the live
 Supabase project, delete the wrong Vercel project, reclaim the freed unsuffixed name, or run the
 checkout on the account that cannot start one.
 
-Two things it does not do: it is not a substitute for reading ticket 28 first, and it was checked
-with `bash -n` but never run end to end, because it opens browsers and blocks on input. The first
-person to run it is also testing it.
+**It was run on 2026-09-28 and reached stage 7 of 10**, carrying stages 8 and 10 of the switch with
+it. Stages 8, 9 and 10 of the wizard — pause the old Supabase project, delete the stale Vercel
+project, the live webhook field — were still outstanding when this was written.
+
+Three faults found by running it, none fatal:
+
+- **It cannot open a browser on this machine.** Every `open_url` prints "couldn't open a browser, so
+  visit it manually" and the URL. Harmless, but expect to copy each one.
+- **Stage 7 cannot succeed** and does not notice — see "Two Paystack businesses".
+- **Its wrong-account hint is wrong.** Stage 7 says that signing in as the wrong Learner shows
+  "the payment is still processing". `server/paystack.ts:62` actually throws **"Payment transaction
+  not found."** for a reference another account owns; "still processing" is line 64's message, for a
+  transaction Paystack has not settled. Two different faults, two different messages.
+
+It is still not a substitute for reading ticket 28 and ticket 30 first.
+
+## The payment path works — 2026-09-27
+
+**This is the first time money has moved through SpellCode end to end.** Recorded here because
+everything above and below was written while it had never happened.
+
+| | |
+|---|---|
+| Checkout | `spellcode-963cdeab-a97c-40e4-8b2f-16a20889c376`, ₦120,000 NGN, `domain: test` |
+| Paystack | `success`, `paid_at` 2026-09-27T19:01:35Z |
+| Webhook | `charge.success` in `paystack_webhook_events`, received 19:01:36Z, `processing_error: null` |
+| Application | `payment_transactions` → `success`; `subscriptions` → `active`, 1/1 installments |
+
+One second from charge to delivery, processed cleanly. **Ticket 28 is closed for test mode and
+ticket 25 with it.** Stage 8 and stage 10 are both genuinely done, on the second test Learner
+(`5499b299-…`) as ticket 28 step 2 recommended.
+
+**Live mode is untouched.** The live webhook field is separate and nothing suggests it is set; read
+ticket 30 before going near it.
+
+### Two Paystack businesses — ticket 30
+
+**The project owner has two Paystack businesses, and `dashboard.paystack.com` URLs carry no business
+identifier.** Everything after the `#` is a client-side route; Paystack shows whichever account the
+session last selected, changed only through the switcher at the top-left. **No link can target a
+business** — not the wizard's, not a bookmark, not one pasted into a ticket.
+
+That is how the 2026-09-25 payment came to look orphaned: it was charged on the *other* business.
+`GET /transaction/verify/spellcode-5a09dd9d-…` with `.env`'s key returns `transaction_not_found`,
+"a transaction that exists on this integration", and the whole transaction history of the current
+integration is the single successful row above. Key rotation does not explain it — rolling a key
+stays inside a business and references survive it.
+
+**Tell the businesses apart by data, not by name** — the two are similarly named, which is how this
+went unnoticed:
+
+> The correct business is the one whose transaction list contains
+> `spellcode-963cdeab-a97c-40e4-8b2f-16a20889c376`.
+
+Confirm that before touching any Paystack setting, especially the live webhook.
+
+**The ₦120,000 was test money and is closed as a no-op** (decided 2026-09-28). It was `domain: test`
+on a test card, so nobody is out of pocket and there was nothing to refund.
+
+**The sharper finding is that `.env`'s `PAYSTACK_SECRET_KEY` is not the key that was there on
+2026-09-25**, and nothing records the change. Ticket 28's author read the 03:43Z transaction with
+"the test secret"; today's key cannot see it. `.env` is untracked, so git cannot answer this. If a
+key can move between businesses unrecorded, so can the webhook URL and the live keys. Ticket 30
+carries it.
+
+**Wizard stage 7 cannot do its job.** It will print `after: [{"status":"abandoned","paid_at":null}]`
+every time, and because its `y` branch does not verify its own result, it will not appear in the
+wizard's closing "skipped" summary either — the run reads clean while this stays open.
 
 ### Stage 8, stated once
 
 **Corrected 2026-09-25: the webhook URL was never set.** This section previously opened "The webhook
 URL is set", which was an assumption nobody had checked — the dashboard's **Test Webhook URL** field
-was found empty, and that is why the stage 10 payment vanished (ticket 28). Everything below about
-the *endpoint* still stands and was worth proving; what was missing was Paystack's side of it.
+was found empty, and that is why the stage 10 payment vanished (ticket 28). **It was set on
+2026-09-27 and is now proven** — see "The payment path works". Everything below about the *endpoint*
+still stands and was worth proving; what was missing was Paystack's side of it.
 
 The endpoint is verified as far as a terminal can reach:
 
@@ -316,47 +384,32 @@ a reset is off the table.
    Kept in place rather than deleted so the list reads as a record. **Cite these items by title, not
    by number** — the 2026-09-25 rewrite renumbered them, which silently broke the references in
    tickets 21 and 23; both now name what they mean.
-2. **Stage 8, then stage 10 — in that order. Read ticket 28 before touching either.**
-   **`finish-switch-wizard.sh` walks all of this, and items 3, 4 and 5's first box too** — see "Where
-   the switch stands". Read this item and ticket 28 first anyway; the wizard executes the procedure,
-   it does not explain why. Stage 10 ran
-   on 2026-09-25 at 03:43Z and failed: the charge succeeded at Paystack (`spellcode-5a09dd9d-…`,
-   ₦120,000, `success`) and the application recorded none of it. **A Learner paid and has no Full
-   Access.**
+2. ~~**Stage 8, then stage 10.**~~ **Both done 2026-09-27** — see "The payment path works". The
+   webhook is proven by a `charge.success` row, and a test-mode checkout completed with the
+   subscription going `active`. Tickets 28 and 25 closed with them. **This was also ticket 27's real
+   verification**, which it passed: the checkout ran through a browser session end to end.
 
-   **The cause is settled — Paystack's Test Webhook URL was never set.** The dashboard field is
-   empty, so no delivery was ever attempted and none can be retried. Three things follow:
+   Two claims this item used to make are now false and are corrected rather than deleted, because
+   both were load-bearing:
 
-   - **Set it first:** `https://spellcode-backend.onrender.com/api/paystack/webhook`, in **test**
-     mode, Settings → API Keys & Webhooks. That is stage 8, done properly this time.
-   - **Setting it does not replay the 03:43Z payment.** That row needs reconciling by hand, which is
-     a write to production billing state and wants an explicit decision on *how* — the server's own
-     verify path in preference to editing rows.
-   - **⚠ The re-run is blocked until that row is resolved.** The orphaned checkout left a `pending`
-     subscription, and `initializeCheckout` refuses a second checkout while one exists for that plan
-     (`server/paystack.ts:48-49`). The owner's account cannot start another `full-access-one-time`
-     purchase. **Use a second test account for stage 10**, or reconcile first. See ticket 29, which
-     owns this defect.
-   - **Check the live-mode field too before launch.** It is separate, and nothing suggests it was
-     set either.
-
-   Everything below about this stage was written when it was still ahead of us; it is kept as the
-   procedure for the *next* attempt.
-   Sign in, buy with a Paystack test card. **Wake Render
-   first** — the 30s-vs-45s timeout note above makes a sleeping instance a hard blocker, not a delay.
-   Ticket 25 found the real cause of the earlier failures: all three plans were `is_active: false`,
-   so no checkout could start and no webhook could ever fire, which is why Paystack's event log is
-   empty. It was never a webhook problem. **`full-access-one-time` was activated 2026-09-24 18:50
-   UTC** and is confirmed live through the public `accessOptions` on both hosts; being `one_time` it
-   needs no Paystack plan object. The two installment plans stay inactive until they have test-mode
-   plan codes and do not block stage 10.
-   **This attempt is also ticket 27's only real verification.** Expect one forced sign-in.
+   - **The lockout is gone.** This said the orphaned checkout left a `pending` subscription blocking
+     the owner's account from another `full-access-one-time` purchase. Both old subscriptions now
+     read `cancelled`, which `server/paystack.ts:48` does not match, so that account can check out
+     today. **Nothing records who cancelled them or when** — a write to production billing state
+     that left no trail. Ticket 30 asks for it to be established.
+   - **The 03:43Z row cannot be reconciled**, by hand or otherwise. It is on the other Paystack
+     business. Closed as a no-op; it was test money. Ticket 30.
 3. **Stage 11**, pausing the old Supabase project. Operator, dashboard only.
 4. **Ticket 26**, deleting or disabling the stale Vercel project. Operator, dashboard only.
 5. **The launch checklist**, before any real Learner:
-   - [ ] **Paystack's live-mode Webhook URL actually set**, and confirmed by eye in the dashboard.
-         Test and live are separate fields; the test one was found empty on 2026-09-25 after being
-         assumed set since the switch (ticket 28), so assume nothing about this one.
+   - [ ] **Paystack's live-mode Webhook URL actually set**, and confirmed by eye in the dashboard —
+         **on the business confirmed by the `963cdeab` test first** (ticket 30). Test and live are
+         separate fields; the test one was found empty on 2026-09-25 after being assumed set since
+         the switch (ticket 28), so assume nothing about this one. A live webhook set on the wrong
+         business fails exactly as ticket 28 did, with real money and no test card to prove it.
+   - [ ] **The two installment plans activated**, or deliberately withheld. `full-access-3-month`
+         and `full-access-6-month` are still `is_active: false` with no `paystack_plan_code`; only
+         the one-time plan is sellable. Closing ticket 25 did not change this.
    - [ ] A live-money Paystack test, with Render on the live keys and the live webhook
          (`todo.md:48`).
    - [ ] A Render instance that does not sleep. **A stage 10 blocker, not just a launch item.**
@@ -367,8 +420,11 @@ a reset is off the table.
 6. **Ticket 29, the reconciliation sweep.** Written 2026-09-25, buildable, blocked by nothing.
    Nothing server-side ever re-examines a `payment_transactions` row left at `initialized`, so a paid
    Learner can wait forever — which is what happened on 2026-09-25 — and an *abandoned* checkout
-   leaves a `pending` subscription that locks that Learner out of the plan permanently. Best
-   sequenced after stage 10 passes, so it is written against a payment path known to work.
+   leaves a `pending` subscription that locks that Learner out of the plan permanently. **Now
+   unblocked in the way it wanted to be**: stage 10 has passed, so it can be written against a
+   payment path known to work. **Ticket 30 adds a third row state it must handle** — a sweep calling
+   `GET /transaction/verify/{reference}` gets `transaction_not_found` for a reference charged on an
+   integration the application cannot see, which is neither "paid" nor "abandoned".
 7. **A ticket for the dev server that never binds.** Not blocking launch, but it is now the reason no
    client-side change can be checked in a browser locally.
 8. **The two Forge follow-ups**, still not written as tickets:
@@ -489,6 +545,11 @@ Each was surfaced to the user and none overruled. Do not silently reverse them.
 12. **The public Supabase config is stored in `localStorage` beside the session** (ticket 27),
     because a refresh runs outside React and cannot wait on the `auth.supabaseConfig` query. Both
     values already ship to every visitor. The cost is one forced sign-in, once.
+13. **The orphaned ₦120,000 is closed as a no-op rather than refunded** (ticket 30, 2026-09-28). A
+    refund was the user's first instruction and was reconsidered once the transaction was shown to
+    be `domain: test`: refunding test currency proves the refund path in the one mode where it does
+    not matter. The `cancelled` subscription stands and the account can check out again whenever
+    wanted.
 
 ### Do not reinstate these
 
@@ -501,6 +562,10 @@ Each was surfaced to the user and none overruled. Do not silently reverse them.
 - ~~Ticket 27 needs `getSupabaseAccessToken` to return null past expiry.~~ The function is gone; the
   behaviour is `decideSessionUse`'s.
 - ~~Stage 8 is closed by Paystack's "Send test webhook" button.~~ No such button exists.
+- ~~The owner's account is locked out of a new checkout by a `pending` subscription.~~ Those rows
+  are `cancelled` as of 2026-09-28 and no longer match `server/paystack.ts:48`.
+- ~~The 03:43Z ₦120,000 needs reconciling through `/payment/complete`.~~ It is on another Paystack
+  business and was test money. Ticket 30, closed as a no-op.
 
 ## Suggested skills
 
