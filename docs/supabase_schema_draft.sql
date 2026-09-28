@@ -318,6 +318,12 @@ create table public.payment_transactions (
   status public.payment_state not null default 'initialized',
   paid_at timestamptz,
   provider_payload jsonb not null default '{}'::jsonb,
+  -- Why the reconciliation sweep could not resolve this payment, for a human to act on.
+  -- Null means nothing is wrong. Carried here as well as in
+  -- supabase_payment_reconciliation_migration.sql so a fresh replay matches a migrated
+  -- environment; the application's shared payment write path names this column on every
+  -- settlement, so a database without it fails every payment. See ticket 35.
+  reconciliation_error text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
