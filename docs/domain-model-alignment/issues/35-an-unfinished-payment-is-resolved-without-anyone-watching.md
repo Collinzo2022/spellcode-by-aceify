@@ -90,6 +90,26 @@ This needs a schema migration with its rollback, alongside the ones already in `
 edit to the replay-order schema file. `AGENTS.md` requires that edit to land under a commit whose
 subject names the file and the change; follow it.
 
+## Two things ticket 33 left for this ticket
+
+Both surfaced in ticket 33's review and belong here rather than there.
+
+**The browser return leg has no test at all.** Nothing in the repository imports `verifyCheckout`;
+every payment test drives the webhook. That is one of the two nets this ticket exists to backstop,
+and it is the one that was never covered. **Split it and cover it in the same sitting** — the split
+this ticket already needs is the natural moment.
+
+Cover this in particular: the return leg answers the browser `verified: true` whenever Paystack
+reports success, regardless of what the write actually did. Since ticket 33, a payment already
+settled as `refunded` or `disputed` is deliberately **not** granted, yet the Learner is still told
+their payment succeeded. Nothing reaches that state today, so it is latent rather than live — but
+the return leg should report what happened rather than what was attempted.
+
+**The candidate query must not select `initialized` alone.** This ticket's sweep looks for unfinished
+payments; if it filters to `initialized`, the `abandoned`-can-still-be-settled path that ticket 33
+deliberately preserved is unreachable from the sweep, and the two disagree about what "unfinished"
+means. Use the same set ticket 33 defined, from the same place. Do not define it twice.
+
 ## Why the authorization split is needed
 
 The return leg's verification bundles two jobs: proving the Learner owns the payment, and asking

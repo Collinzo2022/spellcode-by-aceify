@@ -66,9 +66,31 @@ export async function verifyCheckout(reference: string, expectedUserId: string) 
   return { verified: true, status: "success" as const };
 }
 
+/**
+ * The payment states that carry no recorded money, so may still become `success`.
+ *
+ * `refunded` and `disputed` are deliberately absent: money has already been
+ * recorded and then unwound, and a late charge event must not quietly restore
+ * access. `abandoned` and `failed` are present because a checkout written off is
+ * not a checkout that cannot still be paid - a Learner who returns to the same
+ * Paystack link settles the same reference, and that charge is owed to them.
+ */
+const UNSETTLED_PAYMENT_STATES = ["initialized", "abandoned", "failed"] as const;
+
 async function recordVerifiedPayment(payment: PaymentRecord, transaction: { id: number; status: string; amount: number; currency: string; paid_at: string | null; authorization?: { authorization_code?: string }; customer?: { customer_code?: string }; plan?: { plan_code?: string } | null }) {
   if (payment.status === "success") return;
-  await supabaseAdminRequest(`/rest/v1/payment_transactions?id=eq.${payment.id}`, { method: "PATCH", body: JSON.stringify({ status: "success", paystack_transaction_id: String(transaction.id), paystack_authorization_code: transaction.authorization?.authorization_code ?? null, paid_at: transaction.paid_at ?? new Date().toISOString(), provider_payload: transaction, updated_at: new Date().toISOString() }) });
+  // The status read above is a check-then-act: two writers racing both see an unsettled payment
+  // and both proceed, which advances an installment plan twice for one payment. So the transition
+  // is conditional on the row still being unsettled *at the moment of writing*, and a caller whose
+  // write matched nothing stops here rather than going on to credit the subscription.
+  const settledRows = await supabaseAdminRequest<PaymentRecord[] | undefined>(`/rest/v1/payment_transactions?id=eq.${payment.id}&status=in.(${UNSETTLED_PAYMENT_STATES.join(",")})`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ status: "success", paystack_transaction_id: String(transaction.id), paystack_authorization_code: transaction.authorization?.authorization_code ?? null, paid_at: transaction.paid_at ?? new Date().toISOString(), provider_payload: transaction, updated_at: new Date().toISOString() }) });
+  // No rows and no answer are different failures and must not be confused. PostgREST answers a
+  // representation request with an array, empty when the filter matched nothing; it answers 204,
+  // and so `undefined`, only when nobody asked for one. Treating that silence as "another writer
+  // won" would withhold access from every Learner at once, which is why it throws instead: the
+  // webhook records the message and returns 500, so the failure is loud and durable.
+  if (settledRows === undefined) throw new Error("Payment transition was written without asking for the affected rows");
+  if (!settledRows.length) return;
   if (payment.plan_id) {
     const plans = await supabaseAdminRequest<Plan[]>(`/rest/v1/plans?id=eq.${payment.plan_id}&select=id,interval,max_installments`);
     const plan = plans[0];
