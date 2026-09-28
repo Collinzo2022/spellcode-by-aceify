@@ -434,9 +434,13 @@ a reset is off the table.
    | `geewhajddtzoisumbbek` | **paused 2026-09-28** | an intermediate attempt |
    | `mgsbipibzzwrvnseftar` | **running** | the Manus-era project — **the one stage 11 means**, and it **cannot be paused**: it is in an organization the owner is not an admin of |
 
-   So the pause that happened was correct but was not the stage. **Ticket 31** carries the rest: the
-   exposure, what is not yet established about it, and the cheapest mitigation (rotate its keys, which
-   breaks nothing since nothing uses them).
+   So the pause that happened was correct but was not the stage. **Ticket 31** carries the rest.
+
+   **It holds no third-party data**, established 2026-09-28 by reading its Authentication → Users:
+   ten accounts, all the owner's or the one collaborator who built the Manus version. So there is no
+   retention deadline and nobody to notify, and **rotating its keys is the whole of the practical
+   remedy** — nothing uses them, so it breaks nothing. Getting admin rights in order to pause or
+   delete it is housekeeping after that.
 
    The live project was confirmed post-alignment by reading it, not by trusting the ref:
    `plans.paid_features` returns `42703`, its three plan rows match ticket 30's, and the owner
