@@ -1,8 +1,29 @@
 # 29: nothing ever looks again at a payment that did not complete
 
-**Status:** open, written 2026-09-25 out of ticket 28. **Buildable** — the design questions below are
-narrow and the seam already exists. Blocked by nothing in code. It is *not* the fix for 28, which is
-operator configuration; this is the safety net whose absence let 28 stay invisible for seven hours.
+**Status:** **parent ticket, grilled and split 2026-09-28.** Do not implement this file. The work is
+**tickets 33, 34 and 35**, and this one stays as the evidence and the argument behind them.
+
+| | | |
+|---|---|---|
+| **33** | A payment transition is conditional at the database | no blockers |
+| **34** | A Subscription begins at verified payment, not at checkout | no blockers |
+| **35** | An unfinished payment is resolved without anyone watching | blocked by 33 and 34 |
+
+**The three open questions at the foot of this file are answered**, by a grilling session on
+2026-09-28. In short: the sweep runs as a **secret-guarded endpoint called by a schedule committed to
+this repository**, because the host sleeps and a dashboard-held schedule is the failure shape of
+tickets 28, 30 and 31. The cutoffs are **every run for a success, two hours for a death**, and that
+same two hours defines when a checkout stops blocking a retry. A mismatch or an unrecognised answer
+is **recorded on the payment row**, because this host loses its logs on restart.
+
+**The grilling changed the shape of the fix, not just its details.** This ticket proposed sweeping up
+`pending` Subscriptions left by abandoned checkouts. Ticket 34 stops creating them instead — the
+lockout described below is a symptom of writing a Subscription before any money moves, which
+`CONTEXT.md` never said was a Subscription. So **35's abandoned branch has nothing to release**, and
+the sweep is smaller than this file imagines.
+
+Written 2026-09-25 out of ticket 28. It is *not* the fix for 28, which was operator configuration;
+this is the safety net whose absence let 28 stay invisible for seven hours.
 
 A `payment_transactions` row reaches `status: "initialized"` at checkout and is moved off it by
 exactly two things. **Both failed on 2026-09-25, independently, and nothing else was watching.**
@@ -100,20 +121,29 @@ Make the transition conditional at the database instead: add `&status=eq.initial
 one-line change to existing code and it is the correct fix for the existing path too, not only for
 the sweep.
 
-## Open questions, which are the user's
+## Open questions — **all three answered 2026-09-28**, see ticket 35
 
-1. **How does the sweep run?** No scheduler exists. The options are a Render cron job, an
-   authenticated admin endpoint triggered externally, or an interval started at boot. **An interval
-   is the weakest** — the launch checklist already carries "a Render instance that does not sleep",
-   and a sweep that only runs while someone happens to be using the site cannot be relied on for the
-   case where nobody is. Settle this before writing code; it decides where the entry point lives.
-2. **What is the cutoff for "dead"?** It must clear Paystack's own retry behaviour and a slow
-   Learner. Somewhere between 30 minutes and a few hours for the *abandoned* branch; the *success*
-   branch should sweep far more eagerly, since a paid Learner is waiting. **These are probably two
-   different intervals**, and treating them as one is the easy mistake.
-3. **Does a mismatch or a repeated failure need to reach a human, and how?** There is no alerting in
-   this project at all. "Log it" is an acceptable answer, but it should be a decision rather than a
-   default.
+1. ~~**How does the sweep run?**~~ **A secret-guarded endpoint under `/api/scheduled/`, called every
+   ten minutes by a workflow committed to this repository.** A boot interval is not merely weakest,
+   it is inert: the host sleeps when idle, so nothing started at boot is running to fire. The host's
+   own cron needs a paid plan. An in-repo schedule was chosen over a third-party pinger with better
+   timing because a setting nobody can see from the code is exactly what tickets 28, 30 and 31 each
+   were. **It is not a keep-alive**; the non-sleeping instance stays a separate launch item.
+2. ~~**What is the cutoff for "dead"?**~~ **Two, as this ticket suspected.** Successes sweep on every
+   run with no age filter; deaths wait **two hours**. That same two hours is what ticket 34's
+   in-progress guard uses, defined once, so the guard and the sweep cannot disagree about when an
+   attempt is dead.
+3. ~~**Does a mismatch need to reach a human, and how?**~~ **Recorded on the payment row**, following
+   the pattern already used for webhook processing errors. "Log it" was rejected on a fact rather
+   than a preference: this host keeps logs briefly and loses them on restart, so a log line recreates
+   the invisibility that made this ticket necessary.
+
+**One correction to this file's premise.** There *is* a scheduler in the tree —
+`server/_core/heartbeat.ts`, a complete cron client with `/api/scheduled/` callback paths. **Nothing
+imports it and it is unusable**: it calls the Manus Forge API, which this project is migrating off.
+The claim below that the repository has "no scheduler of any kind" is true in effect and misleading
+to anyone who greps. Ticket 35 keeps the `/api/scheduled/` prefix so the convention survives the
+code that documented it.
 
 ## Proving it
 

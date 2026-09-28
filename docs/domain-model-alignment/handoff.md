@@ -14,10 +14,11 @@ carrying: the backend engineer working on F2 can now read these directly, and a 
 recoverable from history rather than gone.
 
 **The effort is over as a build, and the last launch blocker is now fixed in code.** Every ticket
-01–28 and **30** is closed. **Three remain: 29, 31 and 32.** Only 29 is engineering, and it opens with
-three questions only the user can answer, so it is not pick-up-and-build; **31 is operator work the
-owner cannot currently complete**, because the project it concerns is in an organization they do not
-administer; **32 is a cutover hazard plus a domain decision**, and the decision is ADR material.
+01–28 and **30** is closed. **Open: 31, 32, and the reconciliation work as tickets 33, 34 and 35.**
+**Ticket 29 was grilled and split on 2026-09-28** and is now their parent, not work in itself; 33 and
+34 are unblocked and 35 waits on both. **31 is operator work the owner cannot currently complete**,
+because the project it concerns is in an organization they do not administer; **32 is a cutover
+hazard**, its design settled by ADR 0004 and its remainder operator work.
 
 **The operator walk of 2026-09-28 is finished.** Ticket 26 closed, one Supabase project paused, the
 live-mode webhook set. `finish-switch-wizard.sh` documents the procedure, but **take it by hand** —
@@ -497,7 +498,17 @@ a reset is off the table.
    - [ ] Both Forge follow-ups done.
    - Ticket 11 is **off this list** — its server half deploys with the Render build.
    - Not gates: the Android release (closed), and an API domain (dropped when Android closed).
-6. **Ticket 29, the reconciliation sweep.** Written 2026-09-25, buildable, blocked by nothing.
+6. **The reconciliation work — now tickets 33, 34 and 35.** **Ticket 29 was grilled and split on
+   2026-09-28**; it is the parent and holds the evidence, and its three open questions are answered
+   there. **33** (a payment transition is conditional at the database) and **34** (a Subscription
+   begins at verified payment) have no blockers and can start immediately; **35** (the sweep itself)
+   is blocked by both. Take them with `/implement`, clearing context between each.
+
+   **34 is the one to review carefully**: it edits `initializeCheckout`, the only function with
+   production evidence behind it, and it carries ADR 0005 plus a `CONTEXT.md` change. A second
+   test-mode checkout after it lands is cheap insurance.
+
+   The original ticket 29 text, kept below for its evidence:
    Nothing server-side ever re-examines a `payment_transactions` row left at `initialized`, so a paid
    Learner can wait forever — which is what happened on 2026-09-25 — and an *abandoned* checkout
    leaves a `pending` subscription that locks that Learner out of the plan permanently. **Now
