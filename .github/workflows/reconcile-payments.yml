@@ -1,0 +1,67 @@
+# The schedule for the payment reconciliation sweep (ticket 35).
+#
+# This lives in the repository on purpose. Tickets 28, 30 and 31 were each a setting nobody
+# could see from the code - an empty webhook URL field, a swapped API key, a forgotten
+# project - and each cost hours. A schedule in a file is reviewable in a pull request.
+#
+# It is NOT a keep-alive. The instance that does not sleep is a separate launch item and must
+# not be made to depend on this workflow.
+#
+# GitHub's cron is best-effort and drifts under load, by tens of minutes at worst. That is
+# acceptable here by design: the sweep's success path has no age filter, so a late run still
+# resolves a paid Learner, and its death path waits two hours, so a late run cannot kill a
+# live checkout. Nothing about correctness depends on this firing on time.
+name: Reconcile payments
+
+on:
+  schedule:
+    # Every ten minutes.
+    - cron: "*/10 * * * *"
+  # So a human can force a run while looking at a problem, rather than waiting for the clock.
+  workflow_dispatch:
+
+# Two runs at once are harmless - the payment transition is conditional at the database
+# (ticket 33) - but they are pointless, so they are serialised into one group.
+#
+# `cancel-in-progress: false` is deliberate and must stay false. Cancelling a run mid-sweep
+# kills the process between the payment write and the Subscription credit, which is the one
+# state this whole effort exists to prevent: a payment recorded as `success` with nothing
+# granted for it, and no later run will look at it again because it is no longer unfinished.
+# A slow run queues behind the current one instead, and the 5-minute timeout bounds the wait.
+concurrency:
+  group: reconcile-payments
+  cancel-in-progress: false
+
+# This job calls one HTTP endpoint and needs no access to the repository at all. Set as the
+# floor here because this is the repo's first workflow, so it is the precedent the next one
+# copies; a workflow that needs a scope should add exactly that scope and say why.
+permissions: {}
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ask the application to reconcile unfinished payments
+        env:
+          # Both are repository secrets. The endpoint refuses every request when its secret is
+          # not configured, so a missing SCHEDULED_TASKS_SECRET shows up as a failing run
+          # rather than as a sweep that silently never happened.
+          APP_URL: ${{ secrets.APP_URL }}
+          SCHEDULED_TASKS_SECRET: ${{ secrets.SCHEDULED_TASKS_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_URL:-}" ] || [ -z "${SCHEDULED_TASKS_SECRET:-}" ]; then
+            echo "APP_URL and SCHEDULED_TASKS_SECRET must both be set as repository secrets." >&2
+            exit 1
+          fi
+          # The secret goes to curl on stdin, not in its argv, so it is not visible to anything
+          # that can list processes on the runner. printf is a shell builtin, so it does not put
+          # the value into an argv of its own either.
+          #
+          # --fail-with-body so the run fails on a non-2xx *and* still prints what the server
+          # said; that output is the only record of what a run did once the logs age out.
+          printf 'url = "%s"\nheader = "x-spellcode-scheduled-secret: %s"\n' \
+            "${APP_URL%/}/api/scheduled/reconcile-payments" \
+            "${SCHEDULED_TASKS_SECRET}" \
+            | curl --config - --silent --show-error --fail-with-body --max-time 120 --request POST

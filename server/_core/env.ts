@@ -12,4 +12,7 @@ export const ENV = {
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
   paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY ?? "",
   paystackSecretKey: process.env.PAYSTACK_SECRET_KEY ?? "",
+  // Held as a secret, never in a file. Empty means the scheduled endpoints refuse every
+  // request rather than run unauthenticated - see registerScheduledTasks.
+  scheduledTasksSecret: process.env.SCHEDULED_TASKS_SECRET ?? "",
 };

@@ -1,7 +1,8 @@
 # 34: a Subscription begins at verified payment, not at checkout
 
-**Status:** done 2026-09-28, in code and tests. Two boxes unticked on purpose — the shared cutoff
-needs ticket 35 to be read twice, and the live-checkout confirmation is operator work. See Comments.
+**Status:** done 2026-09-28, in code and tests. The shared-cutoff box was closed by ticket 35, which
+reads the export. One box remains unticked: the live-checkout confirmation is operator work. See
+Comments.
 
 **Blocked by:** None (can start immediately).
 
@@ -62,9 +63,9 @@ anyone out.
 - [x] A successful payment still produces an `active` Subscription with the correct installment
       counts — the create-if-missing path now carries every first payment, so it is no longer the
       rare branch.
-- [ ] The cutoff is defined once and read by both the guard and ticket 35. **Half of this cannot land
-      here:** the cutoff is defined once and the guard reads it, but ticket 35 does not exist yet.
-      Unticked deliberately — ticket 35 closes it.
+- [x] The cutoff is defined once and read by both the guard and ticket 35. **Closed by ticket 35**,
+      which imports `abandonedCheckoutCutoff()` rather than restating two hours. It could not be
+      closed here, and was left unticked until it was.
 - [x] ADR 0005 is written, and `CONTEXT.md`'s **Subscription** entry says a Subscription begins at
       verified payment.
 

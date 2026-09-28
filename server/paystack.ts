@@ -4,7 +4,13 @@ import { ENV } from "./_core/env";
 import { supabaseAdminRequest } from "./supabase";
 
 type Plan = { id: string; code: string; name: string; currency: string; amount_minor: number; interval: "one_time" | "monthly"; max_installments: number | null; paystack_plan_code: string | null; is_active: boolean };
-type PaymentRecord = { id: string; user_id: string; plan_id: string | null; paystack_reference: string; amount_minor: number; currency: string; status: string };
+export type PaymentRecord = { id: string; user_id: string; plan_id: string | null; paystack_reference: string; amount_minor: number; currency: string; status: string };
+
+/** One transaction as Paystack reports it, named once because three call sites read it. */
+export type PaystackTransaction = { id: number; status: string; amount: number; currency: string; paid_at: string | null; authorization?: { authorization_code?: string }; customer?: { customer_code?: string }; plan?: { plan_code?: string } | null };
+
+/** Every column the shared write path and the sweep need from a payment row. */
+export const PAYMENT_SELECT = "id,user_id,plan_id,paystack_reference,amount_minor,currency,status";
 
 function paystackHeaders() {
   if (!ENV.paystackSecretKey) throw new Error("Paystack secret key is not configured");
@@ -94,14 +100,73 @@ export async function initializeCheckout(input: { userId: string; email: string;
 
 function parseMetadata(metadata: unknown) { try { return typeof metadata === "string" ? JSON.parse(metadata) : metadata as Record<string, unknown>; } catch { return {}; } }
 
+/**
+ * Ask Paystack about one reference, telling "Paystack does not know this" apart from
+ * "Paystack could not be asked".
+ *
+ * `paystackRequest` collapses both into a throw, which is right for a checkout - the
+ * Learner simply tries again - and wrong for the sweep. A reference that does not exist
+ * on this integration means the application's view of the world is wrong, which happened
+ * once already when a payment turned out to be charged on a second Paystack business
+ * (ticket 30), and a human has to look at it. A provider that is briefly unreachable is
+ * nothing to act on and must not be recorded as an unrecognised reference.
+ */
+async function fetchPaystackTransaction(reference: string): Promise<{ known: true; transaction: PaystackTransaction } | { known: false; message: string }> {
+  const response = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, { headers: paystackHeaders() });
+  const payload = await response.json().catch(() => null) as { status?: boolean; message?: string; data?: PaystackTransaction } | null;
+  // A refusal Paystack means: 404, or any other client-side answer that says `status: false`.
+  // A 5xx is the provider failing, not an answer about the reference, so it throws below.
+  if (response.status === 404 || (response.status < 500 && payload?.status === false)) return { known: false, message: payload?.message ?? `Paystack does not recognise ${reference}` };
+  if (!response.ok || !payload?.status || !payload.data) throw new Error(payload?.message ?? `Paystack verification failed (${response.status})`);
+  return { known: true, transaction: payload.data };
+}
+
+/**
+ * What asking Paystack about one payment established, and what was done about it.
+ *
+ * The four cases are the sweep's four rows in ticket 35, and they are deliberately not
+ * collapsed into a boolean: "Paystack took different money than we asked for" and
+ * "Paystack has never heard of this reference" both mean *do not grant*, but only one of
+ * them means a Learner is waiting, and only a human can tell them apart.
+ */
+export type PaymentVerification =
+  | { kind: "settled"; settlement: PaymentSettlement }
+  | { kind: "mismatched"; detail: string }
+  | { kind: "unpaid"; upstreamStatus: string }
+  | { kind: "unrecognised"; detail: string };
+
+/**
+ * Verify one payment record against Paystack and record it if the money is there.
+ *
+ * Takes a payment row rather than a reference and a Learner, because the sweep has no
+ * Learner behind it. Proving that a Learner owns a reference is a browser concern and
+ * lives in `verifyCheckout`, which calls this.
+ */
+export async function verifyPaymentAtPaystack(payment: PaymentRecord): Promise<PaymentVerification> {
+  const answer = await fetchPaystackTransaction(payment.paystack_reference);
+  if (!answer.known) return { kind: "unrecognised", detail: answer.message };
+  const { transaction } = answer;
+  if (transaction.status !== "success") return { kind: "unpaid", upstreamStatus: transaction.status };
+  // Both halves of the comparison matter. An amount that matches in the wrong currency is a
+  // different sum of money, and granting on it is granting on a number nobody checked.
+  if (transaction.amount !== payment.amount_minor || transaction.currency !== payment.currency) return { kind: "mismatched", detail: `Paystack settled ${transaction.amount} ${transaction.currency}; this payment expects ${payment.amount_minor} ${payment.currency}` };
+  return { kind: "settled", settlement: await recordVerifiedPayment(payment, transaction) };
+}
+
 export async function verifyCheckout(reference: string, expectedUserId: string) {
-  const payments = await supabaseAdminRequest<PaymentRecord[]>(`/rest/v1/payment_transactions?paystack_reference=eq.${encodeURIComponent(reference)}&select=id,user_id,plan_id,paystack_reference,amount_minor,currency,status`);
+  const payments = await supabaseAdminRequest<PaymentRecord[]>(`/rest/v1/payment_transactions?paystack_reference=eq.${encodeURIComponent(reference)}&select=${PAYMENT_SELECT}`);
   const payment = payments[0];
   if (!payment || payment.user_id !== expectedUserId) throw new Error("Payment transaction not found.");
-  const transaction = await paystackRequest<{ id: number; status: string; amount: number; currency: string; paid_at: string | null; authorization?: { authorization_code?: string }; customer?: { customer_code?: string }; plan?: { plan_code?: string } | null }>(`/transaction/verify/${encodeURIComponent(reference)}`, { method: "GET" });
-  if (transaction.status !== "success" || transaction.amount !== payment.amount_minor || transaction.currency !== payment.currency) throw new Error("Payment has not been verified yet.");
-  await recordVerifiedPayment(payment, transaction);
-  return { verified: true, status: "success" as const };
+  const verification = await verifyPaymentAtPaystack(payment);
+  // What the write did, not what Paystack said. Since ticket 33 a payment already settled as
+  // `refunded` or `disputed` is deliberately not granted, and this used to answer
+  // `verified: true` regardless - telling a Learner whose money was unwound that they had
+  // access. Nothing reaches that state today, so it was latent rather than live.
+  if (verification.kind === "settled") {
+    if (verification.settlement === "withheld") throw new Error("This payment was reversed, so it does not grant access. Please contact support.");
+    return { verified: true, status: "success" as const };
+  }
+  throw new Error("Payment has not been verified yet.");
 }
 
 /**
@@ -113,22 +178,69 @@ export async function verifyCheckout(reference: string, expectedUserId: string) 
  * not a checkout that cannot still be paid - a Learner who returns to the same
  * Paystack link settles the same reference, and that charge is owed to them.
  */
-const UNSETTLED_PAYMENT_STATES = ["initialized", "abandoned", "failed"] as const;
+export const UNSETTLED_PAYMENT_STATES = ["initialized", "abandoned", "failed"] as const;
 
-async function recordVerifiedPayment(payment: PaymentRecord, transaction: { id: number; status: string; amount: number; currency: string; paid_at: string | null; authorization?: { authorization_code?: string }; customer?: { customer_code?: string }; plan?: { plan_code?: string } | null }) {
-  if (payment.status === "success") return;
-  // The status read above is a check-then-act: two writers racing both see an unsettled payment
-  // and both proceed, which advances an installment plan twice for one payment. So the transition
-  // is conditional on the row still being unsettled *at the moment of writing*, and a caller whose
-  // write matched nothing stops here rather than going on to credit the subscription.
-  const settledRows = await supabaseAdminRequest<PaymentRecord[] | undefined>(`/rest/v1/payment_transactions?id=eq.${payment.id}&status=in.(${UNSETTLED_PAYMENT_STATES.join(",")})`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ status: "success", paystack_transaction_id: String(transaction.id), paystack_authorization_code: transaction.authorization?.authorization_code ?? null, paid_at: transaction.paid_at ?? new Date().toISOString(), provider_payload: transaction, updated_at: new Date().toISOString() }) });
-  // No rows and no answer are different failures and must not be confused. PostgREST answers a
-  // representation request with an array, empty when the filter matched nothing; it answers 204,
-  // and so `undefined`, only when nobody asked for one. Treating that silence as "another writer
-  // won" would withhold access from every Learner at once, which is why it throws instead: the
-  // webhook records the message and returns 500, so the failure is loud and durable.
-  if (settledRows === undefined) throw new Error("Payment transition was written without asking for the affected rows");
-  if (!settledRows.length) return;
+/** The states a payment can be moved to by writing off an attempt nobody paid. */
+export const DEAD_PAYMENT_STATES = ["abandoned", "failed"] as const;
+export type DeadPaymentState = (typeof DEAD_PAYMENT_STATES)[number];
+
+/**
+ * Write off an unfinished payment, and say whether that matched anything.
+ *
+ * Conditional for the mirror of the reason the success transition is: a payment that succeeded
+ * between a caller's decision and this write must not be marked abandoned afterwards. The state
+ * is typed, so only a value the `payment_state` enum holds can reach the column.
+ */
+export async function markPaymentDead(paymentId: string, state: DeadPaymentState) {
+  return writeIfUnsettled(paymentId, { status: state }, "Payment death");
+}
+
+/**
+ * Move a payment's row only while it is still unsettled, and say whether that matched anything.
+ *
+ * Every write that advances a payment goes through here, because each one is a check-then-act:
+ * the caller read the row, decided, and by the time it writes another writer may have settled it.
+ * The condition travels on the write itself, so a caller whose write matched nothing knows to stop
+ * rather than going on to credit a Subscription twice (ticket 33).
+ *
+ * The `undefined` case is the trap that made ticket 33's first attempt worse than the bug it fixed.
+ * PostgREST answers a PATCH with 204 unless asked for the affected rows, and the Supabase helper
+ * turns 204 into `undefined`. Reading that as "nothing matched" is indistinguishable from "another
+ * writer won", so dropping one header would make every payment look already settled and grant
+ * nothing, silently. It throws instead: the webhook records the message and returns 500, so the
+ * fault is loud and lands somewhere durable. Owning it in one place is why there is one copy of
+ * this reasoning rather than one per caller.
+ */
+async function writeIfUnsettled(paymentId: string, patch: Record<string, unknown>, failureContext: string) {
+  const rows = await supabaseAdminRequest<PaymentRecord[] | undefined>(`/rest/v1/payment_transactions?id=eq.${paymentId}&status=in.(${UNSETTLED_PAYMENT_STATES.join(",")})`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ ...patch, updated_at: new Date().toISOString() }) });
+  if (rows === undefined) throw new Error(`${failureContext} was written without asking for the affected rows`);
+  return rows.length > 0;
+}
+
+/**
+ * What a verified payment did to the Learner's access, as distinct from what was attempted.
+ *
+ * `withheld` is the case ticket 33 created and left uncovered: the money was recorded once
+ * and then unwound, so a late charge event must not restore access. A caller that reports
+ * the attempt rather than this tells such a Learner they have what they do not.
+ */
+export type PaymentSettlement = "granted" | "already-granted" | "withheld";
+
+async function recordVerifiedPayment(payment: PaymentRecord, transaction: PaystackTransaction): Promise<PaymentSettlement> {
+  if (payment.status === "success") return "already-granted";
+  // This deliberately does not touch `reconciliation_error`, though clearing a stale flag here
+  // would be convenient. Naming a column in the shared write path means a database missing it
+  // fails the webhook and the browser return leg too, so one unrun migration would stop every
+  // payment granting anything. The sweep owns that column and clears its own flags.
+  const settled = await writeIfUnsettled(payment.id, { status: "success", paystack_transaction_id: String(transaction.id), paystack_authorization_code: transaction.authorization?.authorization_code ?? null, paid_at: transaction.paid_at ?? new Date().toISOString(), provider_payload: transaction }, "Payment transition");
+  // The write matched nothing, so the row moved between the read and it - but "another writer
+  // granted this first" and "this money was unwound and must not grant" are opposite answers for
+  // the Learner waiting on the reply. One read tells them apart, and it only happens on this
+  // branch, so the common path pays nothing for it.
+  if (!settled) {
+    const current = await supabaseAdminRequest<Array<{ status: string }>>(`/rest/v1/payment_transactions?id=eq.${payment.id}&select=status`);
+    return current[0]?.status === "success" ? "already-granted" : "withheld";
+  }
   if (payment.plan_id) {
     // `code` is selected because the create below snapshots it. The write this replaced ran at
     // checkout and had the Plan in hand; this one starts from a payment row and has to fetch it.
@@ -149,6 +261,7 @@ async function recordVerifiedPayment(payment: PaymentRecord, transaction: { id: 
     // record which Plan it was sold as - a silent loss, since nothing reads the column yet.
     else await supabaseAdminRequest("/rest/v1/subscriptions", { method: "POST", body: JSON.stringify({ user_id: payment.user_id, plan_id: payment.plan_id, ...patch, plan_snapshot: { plan_code: plan?.code ?? null, source: "paystack" } }) });
   }
+  return "granted";
 }
 
 export async function findOrCreateRecurringPayment(data: Record<string, unknown>) {

@@ -4,6 +4,7 @@ import { registerStorageProxy } from "./_core/storageProxy";
 import { appRouter } from "./routers";
 import { createContext } from "./_core/context";
 import { registerPaystackWebhook } from "./paystack";
+import { registerReconciliationEndpoint } from "./reconcilePayments";
 import { registerMobileRoutes } from "./mobile";
 import { registerUtcOffsetContract } from "./utcOffset";
 
@@ -15,6 +16,7 @@ export function createSpellCodeApp() {
   registerUtcOffsetContract(app);
   registerStorageProxy(app);
   registerPaystackWebhook(app);
+  registerReconciliationEndpoint(app);
   registerMobileRoutes(app);
   app.use("/api/trpc", createExpressMiddleware({ router: appRouter, createContext }));
   return app;
