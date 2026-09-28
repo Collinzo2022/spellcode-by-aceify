@@ -1,6 +1,17 @@
 # 28: a successful payment left the Learner with nothing
 
-**Status:** open. Found 2026-09-25 10:33 UTC while preparing stage 10. **This is not a stage 10
+**Status:** **closed for test mode, 2026-09-28.** The Test Webhook URL was set, and a fresh
+test-mode checkout proved delivery end to end: `paystack_webhook_events` holds a `charge.success`
+received **2026-09-27T19:01:36Z** with `processing_error: null`, one second after the charge on
+`spellcode-963cdeab-…`, and that Learner's subscription went `active`. **The live-mode field is
+separate and still unchecked** — it stays on the launch checklist, and ticket 30 says what to
+confirm before setting it.
+
+**Step 3, reconciling the 03:43Z row, is withdrawn as impossible.** That transaction is not on the
+integration this repo is configured against; see **ticket 30**, which also records that it was
+`domain: test` money and closes it as a no-op.
+
+Found 2026-09-25 10:33 UTC while preparing stage 10. **This was not a stage 10
 rehearsal — stage 10 already ran, at 03:43 UTC the same morning, and this is its result.** Money
 moved on Paystack and the application recorded none of it.
 

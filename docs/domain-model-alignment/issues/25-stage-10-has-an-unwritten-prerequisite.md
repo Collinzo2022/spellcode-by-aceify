@@ -1,9 +1,15 @@
 # 25: stage 10 cannot run — no stage ever activates a plan
 
-**Status:** open, and **blocking stage 10**. Found 2026-09-24 while preparing the test-mode
-checkout. Not a code defect: the code is behaving correctly and refusing to sell something that
-was never switched on. The defect is in the **procedure**, which asks for a checkout without ever
-making one possible.
+**Status:** **closed 2026-09-28.** `full-access-one-time` was activated 2026-09-24 18:50 UTC, and
+**stage 10 has now passed on it** — `spellcode-963cdeab-a97c-40e4-8b2f-16a20889c376`, ₦120,000,
+`success`, with the subscription going `active` at 1/1 installments. A checkout that completes is
+the proof this ticket was waiting for. The two installment plans remain `is_active: false` and still
+need test-mode plan codes before they can be sold; that is a launch item, not this ticket, which was
+about stage 10 being impossible.
+
+Found 2026-09-24 while preparing the test-mode checkout. Not a code defect: the code was behaving
+correctly and refusing to sell something that was never switched on. The defect was in the
+**procedure**, which asked for a checkout without ever making one possible.
 
 ## The facts, read from production
 
