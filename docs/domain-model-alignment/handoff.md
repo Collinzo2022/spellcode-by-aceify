@@ -14,15 +14,17 @@ carrying: the backend engineer working on F2 can now read these directly, and a 
 recoverable from history rather than gone.
 
 **The effort is over as a build, and the last launch blocker is now fixed in code.** Every ticket
-01–28 and **30** is closed. **Two remain: 29 and 31.** Only 29 is engineering, and it opens with three
-questions only the user can answer, so it is not pick-up-and-build; **31 is operator work the owner
-cannot currently complete**, because the project it concerns is in an organization they do not
-administer. What is left besides them is **the live-mode webhook field**, a dashboard check.
-`finish-switch-wizard.sh` documents the remainder, but **take it by hand** — the wizard has no resume
-state, so re-running it walks back through its stage 7, which cannot succeed. (This sentence read
-"tickets 25 and 26 remain" until 2026-09-26, having been written before 28 and 29 existed, then
-"25, 26, 28 and 29", then "26, 29 and 30" earlier on 2026-09-28; 26 closed that day and 31 was found
-the same afternoon.)
+01–28 and **30** is closed. **Three remain: 29, 31 and 32.** Only 29 is engineering, and it opens with
+three questions only the user can answer, so it is not pick-up-and-build; **31 is operator work the
+owner cannot currently complete**, because the project it concerns is in an organization they do not
+administer; **32 is a cutover hazard plus a domain decision**, and the decision is ADR material.
+
+**The operator walk of 2026-09-28 is finished.** Ticket 26 closed, one Supabase project paused, the
+live-mode webhook set. `finish-switch-wizard.sh` documents the procedure, but **take it by hand** —
+the wizard has no resume state, so re-running it walks back through its stage 7, which cannot succeed.
+(This sentence read "tickets 25 and 26 remain" until 2026-09-26, having been written before 28 and 29
+existed, then "25, 26, 28 and 29", then "26, 29 and 30" earlier on 2026-09-28; 26 closed that day, and
+31 and 32 were both found the same afternoon.)
 
 **`703e1cf` is pushed**, confirmed by `git ls-remote` and by the `update by push` in
 `git reflog show origin/main`. An earlier revision of this file said the commit was unpushed and that
@@ -454,16 +456,31 @@ a reset is off the table.
    unchanged and verified. **The rotation question it raised is still open** — see "The production
    address changed".
 5. **The launch checklist**, before any real Learner:
-   - [ ] **Paystack's live-mode Webhook URL actually set**, and confirmed by eye in the dashboard —
-         **on the business confirmed by the `963cdeab` test first** (ticket 30). Test and live are
-         separate fields; the test one was found empty on 2026-09-25 after being assumed set since
-         the switch (ticket 28), so assume nothing about this one. A live webhook set on the wrong
-         business fails exactly as ticket 28 did, with real money and no test card to prove it.
-   - [ ] **The two installment plans activated**, or deliberately withheld. `full-access-3-month`
-         and `full-access-6-month` are still `is_active: false` with no `paystack_plan_code`; only
-         the one-time plan is sellable. Closing ticket 25 did not change this.
+   - [x] **Paystack's live-mode Webhook URL actually set.** **Done 2026-09-28.** It was found
+         **empty** — only the test field carried the Render URL — and the operator set it to
+         `https://spellcode-backend.onrender.com/api/paystack/webhook`. The business was confirmed
+         first by the `963cdeab` test (ticket 30), in test mode; that is valid, because **test and
+         live are two modes of one business**, not two businesses, so the identification carries.
+         Setting it while Render holds test keys is harmless: a live event could not verify, and
+         `285bdf1` refuses a webhook it cannot verify rather than half-processing it. Test and live
+         are separate fields, and the test one was found empty on 2026-09-25 after being assumed set
+         since the switch (ticket 28) — which is why this one was *looked at* rather than assumed.
+   - [ ] **The two installment plans activated**, or deliberately withheld. **The plan objects were
+         created in Paystack's live mode on 2026-09-28, and this did not reach the application** —
+         `full-access-3-month` and `full-access-6-month` are still `is_active: false` with
+         `paystack_plan_code: null`, so only the one-time plan is sellable. Creating a plan at
+         Paystack does not write back. **See ticket 32**, which also carries the structural half: a
+         Paystack plan code exists per *mode*, and `plans.paystack_plan_code` is one column with no
+         mode dimension. Closing ticket 25 did not change any of this.
    - [ ] A live-money Paystack test, with Render on the live keys and the live webhook
          (`todo.md:48`).
+
+     **The cutover is three coupled changes, not two** (ticket 32): Render's secret key and the
+     client's public key to live; the live webhook set (done); **and `plans.paystack_plan_code`
+     patched to the live plan codes**, via `billing.updatePlan`. Move the first two without the third
+     and installment checkouts break at `server/paystack.ts:46`. Move the third early and test-mode
+     installment work breaks instead. The third is the invisible one, and it is why this item is
+     listed as three things.
    - [ ] A Render instance that does not sleep. **A stage 10 blocker, not just a launch item.**
    - [ ] Custom SMTP for Auth email, in place of the rate-limited built-in sender.
    - [ ] Both Forge follow-ups done.
