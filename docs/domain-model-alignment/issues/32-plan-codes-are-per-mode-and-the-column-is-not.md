@@ -18,10 +18,20 @@ Read from the live database immediately afterwards:
 **Creating a plan at Paystack does not write back.** The two installment plans remain unsellable, and
 they fail at two separate guards in `initializeCheckout`:
 
-- `server/paystack.ts:45` — `if (!plan?.is_active) throw "This access plan is not available right now."`
-- `server/paystack.ts:46` — `if (plan.interval !== "one_time" && !plan.paystack_plan_code) throw "This installment plan is not configured yet."`
+- `if (!plan?.is_active) throw "This access plan is not available right now."`
+- `if (plan.interval !== "one_time" && !plan.paystack_plan_code) throw "This installment plan is not configured yet."`
 
-Both are correct. They are doing their job; nothing has told them the plans now exist.
+The `is_active` guard sits immediately above the plan-code guard, so today an installment checkout is
+refused by the first and never reaches the second.
+
+**Cited here by symbol and thrown message, not by line number, and deliberately.** This ticket
+originally carried `server/paystack.ts:45` and `:46`. Ticket 34's commit `a7383dc` then moved
+`initializeCheckout` by roughly 34 lines, and the citations were wrong from that moment — wrong in
+this file, and wrong again everywhere they had been copied, including into an operator wizard's
+warnings about a cutover that moves money. A symbol and a string survive a refactor; a line number
+does not. **Do not re-introduce line numbers here.**
+
+Both guards are correct. They are doing their job; nothing has told them the plans now exist.
 
 **There is an operator path and it does not need SQL.** `billing.updatePlan`
 (`server/routers/billing.ts:26`) is an `adminProcedure` taking `paystackPlanCode`, `isActive` and
@@ -39,11 +49,14 @@ plans.paystack_plan_code  text | null   -- one column, one value
 
 It is read in three places, and the second and third are the dangerous ones:
 
-1. **`server/paystack.ts:38`** — `payload.plan = input.plan.paystack_plan_code` when initializing an
-   installment checkout. Wrong-mode code here fails loudly at Paystack, which is survivable.
-2. **`server/paystack.ts:97`** — `findOrCreateRecurringPayment` looks the plan **up by**
-   `paystack_plan_code=eq.{planCode}` from the incoming webhook. No match → `return null` (`:99`).
-3. **`server/paystack.ts:117`** — the subscription sync does the same. No match → `return` (`:119`).
+1. **`buildPaystackInitializePayload`** — `payload.plan = input.plan.paystack_plan_code` when
+   initializing an installment checkout. Wrong-mode code here fails loudly at Paystack, which is
+   survivable.
+2. **`findOrCreateRecurringPayment`** — looks the plan **up by** `paystack_plan_code=eq.{planCode}`
+   from the incoming webhook. No match → `return null`.
+3. **`updateSubscriptionLifecycle`** — does the same lookup. No match → a bare `return`.
+
+(All three in `server/paystack.ts`, named by function for the reason given above.)
 
 So whichever mode's code is stored is the mode that works, **and the other fails silently**: a
 recurring charge succeeds at Paystack, the webhook arrives, is verified, finds no plan, and is

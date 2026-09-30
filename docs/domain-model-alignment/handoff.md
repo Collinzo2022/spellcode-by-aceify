@@ -182,9 +182,9 @@ Three faults found by running it, none fatal:
   visit it manually" and the URL. Harmless, but expect to copy each one.
 - **Stage 7 cannot succeed** and does not notice — see "Two Paystack businesses".
 - **Its wrong-account hint is wrong.** Stage 7 says that signing in as the wrong Learner shows
-  "the payment is still processing". `server/paystack.ts:62` actually throws **"Payment transaction
-  not found."** for a reference another account owns; "still processing" is line 64's message, for a
-  transaction Paystack has not settled. Two different faults, two different messages.
+  "the payment is still processing". `verifyCheckout` actually throws **"Payment transaction
+  not found."** for a reference another account owns; "still processing" is a different throw in the
+  same function, for a transaction Paystack has not settled. Two faults, two messages.
 
 It is still not a substitute for reading ticket 28 and ticket 30 first.
 
@@ -336,12 +336,14 @@ only in the Comments.
 
 **Render does not have it, established by probe on 2026-10-01.** `POST` to
 `/api/scheduled/reconcile-payments` with no secret returns `503 Scheduled tasks are not configured`,
-and `reconcilePayments.ts:182` returns that **only** when the variable is unset — an endpoint with a
+and `registerReconciliationEndpoint` returns that **only** when the variable is unset — an endpoint with a
 secret configured answers `401 Invalid scheduled task secret` instead. So the 503 is not ambiguous the
-way stage 8's empty webhook-events array was: **it reads the setting rather than inferring it.** That
+way `switch-wizard.sh` stage 8's empty webhook-events array was: **it reads the setting rather than
+inferring it.** That
 is the difference tickets 28, 30, 31 and 32 each cost hours to learn, applied deliberately this time.
 
-**An unset secret closes the door rather than opening it** (`reconcilePayments.ts:181`), so nothing is
+**An unset secret closes the door rather than opening it** (the 503 in
+`registerReconciliationEndpoint`, which precedes the secret check), so nothing is
 exposed while this stands. What is lost is only the net: a payment left unsettled today still waits
 for someone to notice, which is ticket 29's original complaint.
 
@@ -408,8 +410,8 @@ Present in the bundle served by **both** hosts.
 **The server half is proved by the 503, and it is the better of the two probes.** An unauthenticated
 POST carrying no secret reaches `registerReconciliationEndpoint`, which answers
 `503 {"error":"Scheduled tasks are not configured"}`. A host without `e471f98` could not produce that
-string — it would serve the SPA shell or a 404 — so the endpoint is live on both. And because
-`reconcilePayments.ts:182` refuses before it authenticates when the variable is unset, **the same
+string — it would serve the SPA shell or a 404 — so the endpoint is live on both. And because that
+refusal is written **above** the secret check, so it fires before anything authenticates, **the same
 probe also reports that Render holds no `SCHEDULED_TASKS_SECRET`**: see "The sweep is deployed and
 switched off". Two facts, one request, no credential.
 
@@ -438,7 +440,10 @@ said to re-run rather than to trust — and this is that re-run.
   above were measured, and it **is** the tip as this is written. Do not read that as licence to
   assume it still is.
 
-  **This section does not state what HEAD is.** It used to, said `703e1cf`, then `840921e`, and went
+  **Do not treat the line above as this section's answer to "what is HEAD?".** It records where the
+  figures were measured, which is a fact about the past and cannot rot; whether that commit is still
+  the tip is a different question, and this section deliberately does not answer it. Earlier drafts
+  did, said `703e1cf`, then `840921e`, and went
   stale both times within a day — once inside the very commit that corrected it. A SHA in a file is a
   claim that rots; the same question answered from git cannot. Ask git:
 
@@ -526,8 +531,9 @@ a reset is off the table.
 
    - **The lockout is gone.** This said the orphaned checkout left a `pending` subscription blocking
      the owner's account from another `full-access-one-time` purchase. Both old subscriptions now
-     read `cancelled`, which `server/paystack.ts:48` does not match, so that account can check out
-     today. **Nothing records who cancelled them or when** — a write to production billing state
+     read `cancelled`, which `initializeCheckout`'s access guard does not match, so that account can
+     check out today. (Since ticket 34 that guard reads `status=in.(active,past_due)` — `pending` was
+     removed from it, so a `pending` row no longer blocks anyone regardless.) **Nothing records who cancelled them or when** — a write to production billing state
      that left no trail. Ticket 30 asks for it to be established.
    - **The 03:43Z row cannot be reconciled**, by hand or otherwise. It is on the other Paystack
      business. Closed as a no-op; it was test money. Ticket 30.
@@ -586,7 +592,8 @@ a reset is off the table.
      **The cutover is three coupled changes, not two** (ticket 32, settled by **ADR 0004**): Render's
      secret key and the client's public key to live; the live webhook set (done); **and
      `plans.paystack_plan_code` patched to the live plan codes**, via `billing.updatePlan`. Move the
-     first two without the third and installment checkouts break at `server/paystack.ts:46`. Move the
+     first two without the third and installment checkouts break in `initializeCheckout`, on **"This
+     installment plan is not configured yet."** Move the
      third early and test-mode installment work breaks instead. The third is the invisible one, and it
      is why this item is listed as three things.
 
@@ -764,7 +771,8 @@ Each was surfaced to the user and none overruled. Do not silently reverse them.
   behaviour is `decideSessionUse`'s.
 - ~~Stage 8 is closed by Paystack's "Send test webhook" button.~~ No such button exists.
 - ~~The owner's account is locked out of a new checkout by a `pending` subscription.~~ Those rows
-  are `cancelled` as of 2026-09-28 and no longer match `server/paystack.ts:48`.
+  are `cancelled` as of 2026-09-28, and since ticket 34 `initializeCheckout` no longer counts
+  `pending` as access at all.
 - ~~The 03:43Z ₦120,000 needs reconciling through `/payment/complete`.~~ It is on another Paystack
   business and was test money. Ticket 30, closed as a no-op.
 - ~~Everything committed after `703e1cf` is documentation and changes nothing either host serves.~~
@@ -777,6 +785,15 @@ Each was surfaced to the user and none overruled. Do not silently reverse them.
   back to that copy only when there is none. Ticket 35's Comments called it an open loose end "worth
   a ticket" in one paragraph and corrected that two paragraphs later; **the stale half is struck as
   of 2026-10-01.** Read the whole of a ticket's Comments before acting on any one finding in them.
+- ~~A `file.ts:NN` citation is a good way to point at a guard.~~ **Struck 2026-10-01, and this is the
+  general form of the rot above.** Ticket 32 cited `server/paystack.ts:45` and `:46` for
+  `initializeCheckout`'s two guards; ticket 34's own commit `a7383dc` then moved that function by
+  ~34 lines, and every copy of those numbers — in ticket 32, in this file, and in
+  `operator-remainder.sh`'s warnings about a cutover that moves money — was wrong from that moment.
+  The re-verification commit `50b9e77` re-measured the test suite, the bundles and the deployment,
+  and never thought to re-check a line number. **Cite a symbol and the thrown message instead**: a
+  refactor carries those along, and a reader can `grep` for them. Line numbers are acceptable only
+  for a file nothing edits any more, and even then they are a convenience, not the citation.
 
 ## Suggested skills
 

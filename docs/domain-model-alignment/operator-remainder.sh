@@ -244,6 +244,53 @@ offer_skip() {
   return 1
 }
 
+# require_env_ignored refuses to continue if .env is tracked, because stages
+# 3 and 5 write into it. Carried over verbatim in intent from
+# switch-wizard.sh, which ticket 20 asked for it in: a secret must not be
+# written where a later `git add` would pick it up. `git check-ignore` only
+# reads; this wizard runs no git command that changes the repository.
+require_env_ignored() {
+  if ! command -v git >/dev/null 2>&1; then
+    warn "git not found, so the ignore check cannot run automatically."
+    say "Check by hand that .env is listed in .gitignore."
+    if ! confirm "Is .env gitignored?"; then
+      warn "Stopping: .env must be gitignored before it holds a secret."
+      exit 1
+    fi
+    return 0
+  fi
+  if (cd "$REPO_ROOT" && git check-ignore -q "$ENV_FILE") 2>/dev/null; then
+    note "OK: $ENV_FILE is gitignored, so it is safe to write a secret into."
+    return 0
+  fi
+  warn "$ENV_FILE is NOT gitignored. Refusing to write a secret into a file"
+  warn "  git would track."
+  say "Add '$ENV_FILE' to .gitignore, then re-run this wizard."
+  exit 1
+}
+
+# secret_written NAME: success when set_secret actually wrote NAME. gh can be
+# authenticated and the write still fail, so readiness is not the question.
+secret_written() {
+  local n
+  for n in "${WRITTEN_SECRET[@]:-}"; do [[ "$n" == "$1" ]] && return 0; done
+  return 1
+}
+
+# gh_secrets_url prints the Actions-secrets settings page for this repo,
+# derived from origin rather than hardcoded, because the owner's name is
+# capitalised differently in different places.
+gh_secrets_url() {
+  local slug
+  slug="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null \
+    | sed -E 's#^.*github\.com[:/]##; s#\.git$##')"
+  if [[ -n "$slug" ]]; then
+    printf 'https://github.com/%s/settings/secrets/actions' "$slug"
+  else
+    printf 'https://github.com'
+  fi
+}
+
 # ── Reading and probing ───────────────────────────────────────────────────
 
 # read_env KEY prints KEY's value from .env.
@@ -273,13 +320,25 @@ postgrest() {
 #   200  something is very wrong - it should never authenticate an empty secret
 #   404 / 000  the endpoint is not deployed, or the host is unreachable
 #
-# reconcilePayments.ts:181 refuses before it authenticates when the variable
-# is unset, which is what makes 503 and 401 distinguishable at all. That is
-# deliberately unlike stage 8 of the switch, where an empty webhook-events
-# array could not tell "never set" from "set, nothing fired yet".
+# The 503 is returned BEFORE the secret is checked, in
+# registerReconciliationEndpoint - "Scheduled tasks are not configured"
+# precedes the "Invalid scheduled task secret" line. That ordering is what
+# makes 503 and 401 distinguishable at all, and it is deliberately unlike
+# switch-wizard.sh stage 8, where an empty webhook-events array could not
+# tell "never set" from "set, nothing fired yet".
+#
+# Cited by symbol and message rather than by line: the line numbers in this
+# effort's own docs went stale inside the effort, when ticket 34 moved
+# initializeCheckout by ~34 lines.
 sweep_code() {
-  curl -s -o /dev/null -w '%{http_code}' --max-time 120 \
-    -X POST "${RENDER_HOST}${SWEEP_PATH}" 2>/dev/null || printf '000'
+  # curl's own -w prints 000 when it cannot reach the host, so appending a
+  # second 000 on failure produced "000000", which no caller matches. Only
+  # an absent curl prints nothing at all, and that is the one case that
+  # needs a substitute.
+  local code
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 120 \
+    -X POST "${RENDER_HOST}${SWEEP_PATH}" 2>/dev/null)"
+  printf '%s' "${code:-000}"
 }
 
 # column_exists TABLE COLUMN: success when PostgREST can select the column.
@@ -319,7 +378,15 @@ else
   note "OK: $ENV_FILE found."
 fi
 
-command -v curl >/dev/null 2>&1 || warn "curl not found: the probes will be skipped."
+# Before any stage can reach a write_env, not at the stage that writes: a
+# refusal is worth hitting in pre-flight rather than six stages in.
+require_env_ignored
+
+if ! command -v curl >/dev/null 2>&1; then
+  warn "curl not found. The probes below cannot run, and they will read as"
+  note "  failures rather than as unknowns - treat every one of them as"
+  note "  UNKNOWN, not as a negative result, and verify by eye instead."
+fi
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   note "OK: gh is authenticated, so stages 3, 5 and 6 can act."
 else
@@ -428,16 +495,45 @@ if [[ -z "$EXISTING_SECRET" ]]; then
     ask_secret SCHEDULED_TASKS_SECRET "Paste a secret (32+ random characters):"
     EXISTING_SECRET="$SCHEDULED_TASKS_SECRET"
   fi
-  note "Generated a 64-character random secret."
 fi
 
-write_env SCHEDULED_TASKS_SECRET "$EXISTING_SECRET"
-set_secret SCHEDULED_TASKS_SECRET "$EXISTING_SECRET"
-printf '\n'
-note "The value is not printed here, so it stays out of terminal scrollback."
-note "Stage 4 puts it on your clipboard for the Render dashboard."
-printf '\n'
-pause "Continue."
+# An empty value here would be written to .env and GitHub, and the endpoint
+# treats an unset secret as "refuse everyone" - so the failure would look
+# like stage 4 never having been done, three stages later.
+if [[ -z "$EXISTING_SECRET" ]]; then
+  warn "No secret was captured, so there is nothing to write."
+  note "  Re-run this stage with a value; an empty secret makes the endpoint"
+  note "  refuse every scheduled run, which reads exactly like a missing one."
+  SKIPPED+=("ticket 35: SCHEDULED_TASKS_SECRET was never generated")
+  pause "Continue."
+else
+  note "A ${#EXISTING_SECRET}-character secret is ready."
+  write_env SCHEDULED_TASKS_SECRET "$EXISTING_SECRET"
+  set_secret SCHEDULED_TASKS_SECRET "$EXISTING_SECRET"
+  printf '\n'
+  note "The value is not printed here, so it stays out of terminal scrollback."
+  note "Stage 4 puts it on your clipboard for the Render dashboard."
+  printf '\n'
+  # set_secret records a success in WRITTEN_SECRET, so ask it whether the
+  # write landed rather than re-testing gh: gh can be authenticated and the
+  # write still fail, and this stage is one of ticket 35's blocking items.
+  if ! secret_written SCHEDULED_TASKS_SECRET; then
+    warn "The GitHub secret was not written, so the workflow has no secret"
+    warn "  yet and every scheduled run will be refused."
+    printf '\n'
+    open_url "$(gh_secrets_url)"
+    step "New repository secret."
+    step "Name: SCHEDULED_TASKS_SECRET"
+    step "Secret: the same value stage 4 will put on your clipboard, or read"
+    step "  it with: grep '^SCHEDULED_TASKS_SECRET=' $ENV_FILE"
+    step "Add secret."
+    printf '\n'
+    confirm "Added it in the browser?" || \
+      SKIPPED+=("ticket 35: SCHEDULED_TASKS_SECRET in GitHub Actions secrets")
+    printf '\n'
+  fi
+  pause "Continue."
+fi
 
 # -- 4 ---------------------------------------------------------------------
 stage "Ticket 35: paste the same secret into Render"
@@ -449,7 +545,7 @@ if [[ "$(sweep_code)" == "401" ]] && ! confirm "Render already has a secret set 
   note "Leaving Render's value alone."
   mark_done render_secret
 else
-  if copy_to_clipboard "$EXISTING_SECRET"; then
+  if [[ -n "$EXISTING_SECRET" ]] && copy_to_clipboard "$EXISTING_SECRET"; then
     printf '  %s✓ copied%s the secret to your clipboard\n' "$GREEN" "$RESET"
   else
     warn "Could not reach a clipboard. Read the value from $ENV_FILE:"
@@ -465,14 +561,18 @@ else
   warn "Saving here restarts the live backend."
   if confirm "Saved, and the redeploy has finished?"; then
     printf '\n'
-    say "Checking that the endpoint changed its answer:"
+    say "Checking that the endpoint changed its answer. Six probes, 20s apart"
+    say "between them, so this stage is bounded at roughly four minutes -"
+    say "a cold Render start can exceed 45s, but not four minutes."
     FLIPPED=""
     for _attempt in 1 2 3 4 5 6; do
       CODE=$(sweep_code)
-      note "  probe: $CODE"
+      note "  probe $_attempt of 6: $CODE"
       if [[ "$CODE" == "401" ]]; then FLIPPED="yes"; break; fi
-      note "  not yet - waiting 20s (a cold Render start can exceed 45s)"
-      sleep 20
+      if [[ "$_attempt" != "6" ]]; then
+        note "  not yet - waiting 20s"
+        sleep 20
+      fi
     done
     if [[ -n "$FLIPPED" ]]; then
       printf '  %s✓ verified%s 503 became 401: Render holds the secret\n' "$GREEN" "$RESET"
@@ -511,13 +611,33 @@ APP_URL="${APP_URL:-$APP_URL_VALUE}"
 write_env APP_URL "$APP_URL"
 set_secret APP_URL "$APP_URL"
 printf '\n'
+if ! secret_written APP_URL; then
+  warn "APP_URL did not reach GitHub. The workflow fails loudly without it,"
+  warn "  so ticket 35 stays open until this is set."
+  printf '\n'
+  open_url "$(gh_secrets_url)"
+  step "New repository secret."
+  step "Name: APP_URL"
+  step "Secret: $APP_URL"
+  step "Add secret."
+  printf '\n'
+  confirm "Added it in the browser?" || \
+    SKIPPED+=("ticket 35: APP_URL in GitHub Actions secrets")
+  printf '\n'
+fi
 pause "Continue."
 
 # -- 6 ---------------------------------------------------------------------
 stage "Ticket 35: prove the sweep actually runs"
-say "Stage 8 of the switch was marked done on the strength of the endpoint"
+say "switch-wizard.sh stage 8 was marked done on the strength of the endpoint"
 say "answering correctly, which was never the same claim as Paystack"
-say "delivering. That cost a real payment. So: force a run and read it."
+say "delivering. That cost a real payment. So: force a run and read its"
+say "conclusion from GitHub - this stage does not ask you whether it worked."
+printf '\n'
+note "A green run is real evidence here, not a formality: the workflow runs"
+note "  curl --fail-with-body under set -euo pipefail, so anything but a 2xx"
+note "  from the endpoint fails the step. Green means the secret matched and"
+note "  the sweep returned its summary."
 printf '\n'
 
 CODE=$(sweep_code)
@@ -536,20 +656,41 @@ else
   printf '\n'
   if confirm "Force one run now?"; then
     if gh workflow run "$WORKFLOW" >/dev/null 2>&1; then
-      note "Dispatched. Waiting 15s for the run to appear."
-      sleep 15
-      gh run list --workflow "$WORKFLOW" --limit 3 || true
+      note "Dispatched. Polling for the conclusion, up to about two minutes."
+      CONCLUSION=""
+      for _attempt in 1 2 3 4 5 6 7 8; do
+        sleep 15
+        RUN_STATE="$(gh run list --workflow "$WORKFLOW" --limit 1 \
+          --json status,conclusion \
+          --jq '.[0] | "\(.status) \(.conclusion)"' 2>/dev/null || printf '')"
+        note "  attempt $_attempt of 8: ${RUN_STATE:-could not read the run}"
+        case "$RUN_STATE" in
+          completed*) CONCLUSION="${RUN_STATE#completed }"; break ;;
+        esac
+      done
       printf '\n'
-      say "A run that succeeds printed the sweep's own JSON summary - that"
-      say "output is the only record of what it did once the logs age out."
-      note "  Read it with: gh run view --log --workflow $WORKFLOW"
-      printf '\n'
-      if confirm "Did the run succeed?"; then
-        mark_done sweep_proved
-        printf '  %s✓ the safety net is live%s\n' "$GREEN" "$RESET"
-      else
-        SKIPPED+=("ticket 35: the forced workflow run did not succeed - read its log")
-      fi
+      case "$CONCLUSION" in
+        success)
+          mark_done sweep_proved
+          printf '  %s✓ the safety net is live%s - GitHub reports success\n' "$GREEN" "$RESET"
+          say "The run printed the sweep's own JSON summary, and that output is"
+          say "the only record of what it did once the logs age out:"
+          note "  gh run view --log --workflow $WORKFLOW"
+          ;;
+        "")
+          warn "The run did not finish in time, or its state could not be read."
+          note "  This is NOT a failure and NOT a success. Read it yourself:"
+          note "  gh run view --log --workflow $WORKFLOW"
+          SKIPPED+=("ticket 35: prove the sweep runs (the forced run's conclusion was never read)")
+          ;;
+        *)
+          warn "GitHub reports the run concluded: $CONCLUSION"
+          note "  curl --fail-with-body means the endpoint answered non-2xx, so"
+          note "  the secret on Render and the secret in GitHub likely differ."
+          note "  The body is in the log: gh run view --log --workflow $WORKFLOW"
+          SKIPPED+=("ticket 35: the forced workflow run concluded $CONCLUSION - read its log")
+          ;;
+      esac
     else
       warn "gh could not dispatch the workflow."
       SKIPPED+=("ticket 35: force one run of $WORKFLOW")
@@ -668,8 +809,11 @@ else
   fi
   printf '\n'
   warn "Do NOT try to pause or delete that project here."
-  note "  It is switch stage 8, it needs admin rights the owner lacks, and"
-  note "  attempting it is how an hour disappears. Rotation is the win."
+  note "  It is switch-wizard.sh stage 11, which finish-switch-wizard.sh"
+  note "  carries as its own stage 8 - two numbers for one action, and the"
+  note "  handoff has confused them before. It needs admin rights the owner"
+  note "  lacks, and attempting it is how an hour disappears. Rotation is"
+  note "  the win."
   printf '\n'
   note "Separately still open: ticket 26's rotation question, about whether"
   note "  the DELETED Vercel project held the service-role key for the LIVE"
@@ -694,7 +838,8 @@ note "  2. The live-mode Webhook URL set - done 2026-09-28"
 note "  3. plans.paystack_plan_code patched to the LIVE plan codes, via"
 note "     billing.updatePlan (an adminProcedure, not SQL by hand)"
 printf '\n'
-warn "Move 1 and 2 without 3 and installment checkouts break at paystack.ts:46."
+warn "Move 1 and 2 without 3 and installment checkouts break in"
+warn "  initializeCheckout, on \"This installment plan is not configured yet.\""
 warn "Move 3 early and test-mode installment work breaks instead."
 printf '\n'
 say "Worse than either: a Paystack plan object exists in exactly ONE mode, so"
@@ -705,9 +850,11 @@ say "and is dropped without a record. Money moves and the application says"
 say "nothing. That is ticket 28's shape for the third time."
 printf '\n'
 note "Nothing can hit that today: both installment plans are is_active false,"
-note "  so they are refused at paystack.ts:45 before :46 is reached, and the"
-note "  one-time plan never sends a plan code at all. The hazard arrives the"
-note "  moment installments are switched on."
+note "  so initializeCheckout refuses them on \"This access plan is not"
+note "  available right now.\" - the is_active guard sits one line ABOVE the"
+note "  plan-code guard and fires first - and the one-time plan never sends a"
+note "  plan code at all. The hazard arrives the moment installments are"
+note "  switched on."
 printf '\n'
 warn "This wizard will not perform the cutover, and that is deliberate."
 note "  Three launch gates still sit in front of it: a live-money Paystack"

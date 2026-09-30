@@ -22,8 +22,12 @@ Read the file at the referenced path. The user will normally pass the path or th
 
 The active feature directory is `docs/domain-model-alignment/`, holding `spec.md`, a
 `handoff.md` recording the decisions behind the effort, 35 issues at `issues/NN-<slug>.md`, and the
-switch wizard from ticket 20 alongside `finish-switch-wizard.sh`, which covers its remainder and
-which, like it, has no resume state. Commit messages reference these by number as "ticket NN", so the
+three wizards. `switch-wizard.sh` (ticket 20) and `finish-switch-wizard.sh`, which covers its
+remainder, both have **no resume state and must not be re-run** — re-running the second walks back
+through its stage 7, which cannot succeed and does not notice, so the run reads clean while the work
+stays open. `operator-remainder.sh` is the third and **does** resume: it re-probes what it can read
+and offers to skip the rest, which is why it is the one to reach for.
+Commit messages reference these by number as "ticket NN", so the
 numbering is load-bearing: `git log --grep 'ticket 14'` is how you find the work for an issue.
 
 **These files were in `.scratch/` and gitignored until 2026-09-25, when the whole directory moved
