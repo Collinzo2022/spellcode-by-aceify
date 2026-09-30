@@ -21,8 +21,9 @@ Read the file at the referenced path. The user will normally pass the path or th
 ## In this repo
 
 The active feature directory is `docs/domain-model-alignment/`, holding `spec.md`, a
-`handoff.md` recording the decisions behind the effort, 29 issues at `issues/NN-<slug>.md`, and the
-switch wizard from ticket 20. Commit messages reference these by number as "ticket NN", so the
+`handoff.md` recording the decisions behind the effort, 35 issues at `issues/NN-<slug>.md`, and the
+switch wizard from ticket 20 alongside `finish-switch-wizard.sh`, which covers its remainder and
+which, like it, has no resume state. Commit messages reference these by number as "ticket NN", so the
 numbering is load-bearing: `git log --grep 'ticket 14'` is how you find the work for an issue.
 
 **These files were in `.scratch/` and gitignored until 2026-09-25, when the whole directory moved

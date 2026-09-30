@@ -209,9 +209,13 @@ conditional write matched nothing, so the common path pays nothing for it.
 
 The leg **throws** on `withheld` rather than returning `verified: false`, because
 `client/src/pages/PaymentComplete.tsx` renders a spinner for anything that is neither `verified` nor
-an error — so returning false would hang that page forever. The client's error copy still says the
-payment "may still be processing", which is wrong for a reversal; **that copy is a loose end**, worth
-a ticket, and not worth widening this one into the client.
+an error — so returning false would hang that page forever. ~~The client's error copy still says the
+payment "may still be processing", which is wrong for a reversal; that copy is a loose end, worth a
+ticket, and not worth widening this one into the client.~~ **Struck 2026-10-01: this was already
+false when committed.** The same commit fixed the copy — see "The return leg's new message never
+reached the Learner" below, which explains why it had to. The sentence survived from a draft written
+before that change and was the one place this file disagreed with itself; a reader who stopped here
+would have gone looking for a ticket that was never needed.
 
 ### What the review changed, and it was not cosmetic
 

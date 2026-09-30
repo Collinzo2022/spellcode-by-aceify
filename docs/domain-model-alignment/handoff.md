@@ -3,7 +3,10 @@
 Rewritten **2026-09-25**, superseding the 2026-09-24 revision, which put `main` at `5753e04` and
 described tickets 24 and 27 as outstanding. Both are done. **Revised 2026-09-28** — see "The payment
 path works", which is the first genuinely new thing since the rewrite, and "The production address
-changed", where ticket 26 is now closed. Repo:
+changed", where ticket 26 is now closed. **Revised 2026-10-01**: tickets 33, 34 and 35 are built and
+deployed, so the reconciliation work is now **operator work, not engineering work** — see "The sweep
+is deployed and switched off". The verification figures and the deployment table were both re-measured
+the same day, having gone stale exactly as the "Verified state" self-test predicted. Repo:
 `C:\Users\aefue\Desktop\Projects\Spellcode\spellcode-by-aceify`.
 
 **Moved 2026-09-25 from `.scratch/domain-model-alignment/` to `docs/domain-model-alignment/`, and
@@ -13,12 +16,27 @@ repo access, and edits to them belong in commits like any other file.** Two cons
 carrying: the backend engineer working on F2 can now read these directly, and a deleted ticket is
 recoverable from history rather than gone.
 
-**The effort is over as a build, and the last launch blocker is now fixed in code.** Every ticket
-01–28 and **30** is closed. **Open: 31, 32, and the reconciliation work as tickets 33, 34 and 35.**
-**Ticket 29 was grilled and split on 2026-09-28** and is now their parent, not work in itself; 33 and
-34 are unblocked and 35 waits on both. **31 is operator work the owner cannot currently complete**,
-because the project it concerns is in an organization they do not administer; **32 is a cutover
-hazard**, its design settled by ADR 0004 and its remainder operator work.
+**The effort is over as a build, and every ticket in it is now closed.** Tickets 01–28, **30**, and
+**33, 34 and 35** are done; **ticket 29 was grilled and split on 2026-09-28** and is their parent,
+not work in itself. **Nothing on this effort is waiting on an engineer.**
+
+**Open: 31 and 32, both operator work, plus the two operator steps ticket 35 left behind.** **31 the
+owner cannot currently complete**, because the project it concerns is in an organization they do not
+administer; **32 is a cutover hazard**, its design settled by ADR 0004 and its remainder operator
+work; **35's sweep is deployed and refusing every request** until a secret and a migration land.
+
+**Everything now outstanding on this effort is a dashboard, a secret or a SQL file — read "What is
+left" as an operator's list, not an engineer's.** It is also a wizard, written 2026-10-01:
+
+```bash
+bash docs/domain-model-alignment/operator-remainder.sh
+```
+
+**Nine stages, and unlike the two wizards beside it, this one resumes.** It re-probes what it can
+read — the `reconciliation_error` column, and whether the sweep endpoint answers 503 or 401 — and
+keeps a state file for the three stages nothing can probe. **So it is safe to re-run**, which neither
+`switch-wizard.sh` nor `finish-switch-wizard.sh` is. It performs tickets 35, 34 and 31, and
+**deliberately refuses ticket 32's cutover**, reporting the three coupled changes instead.
 
 **The operator walk of 2026-09-28 is finished.** Ticket 26 closed, one Supabase project paused, the
 live-mode webhook set. `finish-switch-wizard.sh` documents the procedure, but **take it by hand** —
@@ -27,12 +45,15 @@ the wizard has no resume state, so re-running it walks back through its stage 7,
 existed, then "25, 26, 28 and 29", then "26, 29 and 30" earlier on 2026-09-28; 26 closed that day, and
 31 and 32 were both found the same afternoon.)
 
-**`703e1cf` is pushed**, confirmed by `git ls-remote` and by the `update by push` in
-`git reflog show origin/main`. An earlier revision of this file said the commit was unpushed and that
-nothing below was testable until it was — that is no longer true. (It is an ancestor of `main`, not
-its tip; this file deliberately no longer says what the tip is — see "Verified state".)
-**Both hosts have rebuilt from it**, verified by probe on 2026-09-25 (see "Deployment confirmed"),
-so ticket 27's fix is live and stage 10 is unblocked. See "What is left".
+**`703e1cf` stopped being the interesting commit on 2026-09-28.** It is ticket 27's fix, pushed and
+deployed, and until the reconciliation work landed it was also the last commit that changed code — a
+role this document leaned on in three places. **It is not any more**: `e471f98` is, and both hosts
+serve it, verified by probe on 2026-10-01 (see "Deployment confirmed"). Ticket 27's fix remains live.
+
+**Twice now this file has said "commits after `703e1cf` are documentation only".** It was true when
+written and false within days, both times. The lesson is the same one the "Verified state" section
+draws about SHAs: **ask git what has changed since the figures were taken, rather than asserting that
+nothing has.** The command is there and it is one line.
 
 ## The production address changed — read this first
 
@@ -116,7 +137,7 @@ Ticket 20's wizard is `docs/domain-model-alignment/switch-wizard.sh`, 12 stages.
 | 6 Point the web at Render | done 2026-09-24, on the `-two` address: `application/json`, bundle `index-C3D4LG3z.js`, matching Render's build exactly |
 | 7 Seed and check through the site | done 2026-09-24 — signup, email confirmation, sign-in, seed data and the dashboard render all verified |
 | 8 Paystack webhook → Render | **done 2026-09-27.** The Test Webhook URL was set, and delivery is proven rather than assumed: a `charge.success` row arrived at 19:01:36Z with `processing_error: null`. Ticket 28 closed for test mode. Live mode is a separate field and still unchecked |
-| 9 Local checks against the new project | done 2026-09-24 — 190 passed, 0 skipped, 0 failed. Now 217, re-run after `703e1cf` was committed |
+| 9 Local checks against the new project | done 2026-09-24 — 190 passed, 0 skipped, 0 failed. Now **264**, re-measured 2026-10-01 at `e471f98`; see "Verified state" |
 | 10 Acceptance in test mode | **passed 2026-09-27 19:01Z**, on the second test Learner. `spellcode-963cdeab-…`, ₦120,000, `success`, subscription `active` 1/1. The first attempt, 2026-09-25 03:43Z, failed and is ticket 30 — closed as a no-op, test money on another Paystack business |
 | 11 Pause the old Supabase project | not done — operator only |
 | 12 Done | — |
@@ -148,7 +169,12 @@ project, the live webhook field — were still outstanding when this was written
 **Its stage 9 is now done: ticket 26 closed 2026-09-28, walked by hand rather than by the wizard.**
 That is the right way to take the remaining three, because the wizard has no resume state either —
 re-running it to reach stage 8 walks back through stage 7, which cannot succeed and does not notice.
-**Stages 8 and 10 remain**: pause the old Supabase project, and the live-mode webhook field.
+~~**Stages 8 and 10 remain**: pause the old Supabase project, and the live-mode webhook field.~~
+**Corrected 2026-10-01: only stage 8 remains.** Stage 10 is the wizard's *look* at the live-mode
+webhook field (`finish-switch-wizard.sh:480`), and the launch checklist records that field set the
+same afternoon this sentence was written — so the two halves of this document disagreed for three
+days. **And stage 8 is ticket 31**, not separate work: "pause the old Supabase project" is the
+project the owner has no admin rights over. One outstanding item, counted twice under two names.
 
 Three faults found by running it, none fatal:
 
@@ -262,6 +288,63 @@ cold start is over 45 seconds, so a webhook arriving at a sleeping instance **ex
 and the retry an hour later finds it asleep again. "A Render instance that does not sleep" is a
 **stage 10 blocker**, not a nice-to-have: wake Render before the test checkout.
 
+## The sweep is deployed and switched off — 2026-10-01
+
+**Tickets 33, 34 and 35 are built, reviewed, committed and live on both hosts.** They are the
+reconciliation work, and they are the last engineering on this effort. What they leave behind is
+**two operator steps, and until both are done the safety net is committed but catching nothing.**
+
+| | |
+|---|---|
+| **33** | A payment transition is conditional at the database — four guards proved by mutation |
+| **34** | A Subscription begins at verified payment, not at checkout — the `pending` write is gone |
+| **35** | An unfinished payment is resolved without anyone watching — the sweep, plus its schedule |
+
+**Read the three tickets' `## Comments` before touching any of this.** They carry findings that are
+not in the ticket bodies, and one of them is load-bearing: ticket 33's review left the browser return
+leg reporting `verified: true` for a payment deliberately **not** granted, and ticket 35's review
+found a flag that could be stranded on a settled payment for good. Both are fixed; the reasoning is
+only in the Comments.
+
+### The two operator steps
+
+1. **Run `docs/supabase_payment_reconciliation_migration.sql`** against the live project
+   (`jttycbhcziffiukpcwvd`). It adds `payment_transactions.reconciliation_error`, which is how a
+   payment the sweep could not resolve becomes visible to a human. **Whether it has been run is not
+   established** — it needs a credentialled read and none was taken on 2026-10-01. Ask the database:
+
+   ```sql
+   select column_name from information_schema.columns
+   where table_name = 'payment_transactions' and column_name = 'reconciliation_error';
+   ```
+
+   **An unrun migration is survivable here, and that is deliberate.** Ticket 35's review moved the
+   flag-clearing write out of the shared settlement path precisely because naming this column there
+   meant a deploy ahead of the migration would have failed the webhook and the browser return leg as
+   well as the sweep — **one unrun migration stopping every payment in the system from granting
+   anything.** As it stands, an unrun migration costs only the sweep.
+
+2. **Create `SCHEDULED_TASKS_SECRET`, in two places that are easy to confuse.** The value must match:
+
+   | Where | Why |
+   |---|---|
+   | **Render's environment** | the endpoint reads it as `ENV.scheduledTasksSecret` to authenticate the caller |
+   | **This repo's GitHub Actions secrets** | `.github/workflows/reconcile-payments.yml` sends it as `x-spellcode-scheduled-secret` |
+
+   The workflow also needs **`APP_URL`**. Setting the secret in only one place leaves the schedule
+   running every ten minutes and being refused every time.
+
+**Render does not have it, established by probe on 2026-10-01.** `POST` to
+`/api/scheduled/reconcile-payments` with no secret returns `503 Scheduled tasks are not configured`,
+and `reconcilePayments.ts:182` returns that **only** when the variable is unset — an endpoint with a
+secret configured answers `401 Invalid scheduled task secret` instead. So the 503 is not ambiguous the
+way stage 8's empty webhook-events array was: **it reads the setting rather than inferring it.** That
+is the difference tickets 28, 30, 31 and 32 each cost hours to learn, applied deliberately this time.
+
+**An unset secret closes the door rather than opening it** (`reconcilePayments.ts:181`), so nothing is
+exposed while this stands. What is lost is only the net: a payment left unsettled today still waits
+for someone to notice, which is ticket 29's original complaint.
+
 ## Ticket 27, and what it means for stage 10
 
 Fixed 2026-09-25 as `703e1cf`. Every signed-in Learner was logged out about an hour after signing in,
@@ -269,9 +352,10 @@ still shown as signed in, told nothing, and stuck until they cleared `localStora
 stage 10 checkout produced no transaction three times running. The ticket file holds the diagnosis
 and the implementation notes; what matters here:
 
-- **It is pushed and deployed.** `origin/main` is at `703e1cf`, and both hosts serve a bundle
-  containing the fix — see "Deployment confirmed". Production no longer carries the defect, so a
-  stage 10 failure now means something new rather than the 2026-09-24 cause.
+- **It is pushed and deployed.** `703e1cf` is an ancestor of `origin/main`, and both hosts serve a
+  bundle still containing the fix — re-confirmed 2026-10-01, see "Deployment confirmed". Production
+  no longer carries the defect, so a stage 10 failure now means something new rather than the
+  2026-09-24 cause.
 - **No browser has run it.** The logic is covered by 27 tests and six mutation tests, but the hour
   boundary is proven against a stubbed clock and a stubbed `fetch`. The round trip against the real
   Supabase project is untested. Treat the first stage 10 attempt as the verification.
@@ -297,46 +381,66 @@ is now the main obstacle to verifying UI work.
 
 `npx vite build` works fine, so the build path is unaffected.
 
-## Deployment confirmed, 2026-09-25
+## Deployment confirmed, 2026-10-01
 
-Probed directly, not read from a dashboard. **The frontend bundle is now `index-DKKVNU9H.js`**,
-superseding the `index-C3D4LG3z.js` recorded on 2026-09-24.
+Probed directly, not read from a dashboard. **The frontend bundle is now `index-cFtl7yUd.js`**,
+superseding `index-DKKVNU9H.js` (2026-09-25) and `index-C3D4LG3z.js` (2026-09-24).
 
-| Host | `/` bundle | `/api/mobile/config` |
-|---|---|---|
-| `spellcode-backend.onrender.com` | `index-DKKVNU9H.js` | 200 `application/json` |
-| `spellcode-by-aceify-two.vercel.app` | `index-DKKVNU9H.js` | 200 `application/json` |
-| `spellcode-by-aceify.vercel.app` (stale) | `index-B_rCL-2W.js` | 200 `text/html` |
+| Host | `/` bundle | `/api/mobile/config` | `POST /api/scheduled/reconcile-payments` |
+|---|---|---|---|
+| `spellcode-backend.onrender.com` | `index-cFtl7yUd.js` | 200 `application/json` | 503 `Scheduled tasks are not configured` |
+| `spellcode-by-aceify-two.vercel.app` | `index-cFtl7yUd.js` | 200 `application/json` | 503 `Scheduled tasks are not configured` |
+| `spellcode-by-aceify.vercel.app` | **deleted 2026-09-28** — 404, ticket 26 | 404 | — |
 
-Both live bundles are **1,503,882 bytes and identical to each other**, which is the same
-Vercel↔Render agreement that diagnosed the wrong-org fault — both are Linux CI builds, so they are
-comparable (a local build is not; see Working conventions).
+Both live bundles are **1,503,905 bytes, md5 `d2c64ec8ff4941e2726e54a1a4ac8597`, identical to each
+other**, which is the same Vercel↔Render agreement that diagnosed the wrong-org fault — both are
+Linux CI builds, so they are comparable. **A local `npx vite build` the same day produced
+`index-lfvD14Np.js`**, a different hash for the identical commit, which is the convention in Working
+conventions demonstrated rather than asserted.
 
-**A changed hash alone would not prove ticket 27 shipped**, so the bundle was searched for a string
-the fix introduced: `CONFIG_STORAGE_KEY = "spellcode-supabase-config"`
-(`shared/supabaseSession.ts:27`), which exists only from `703e1cf`. It is present in the bundle
-served by **both** hosts, alongside the pre-existing `spellcode-supabase-session`. That is direct
-evidence of the fix in production rather than an inference from a filename.
+**A changed hash alone would not prove ticket 35 shipped**, so each bundle was searched for a string
+only the new code can produce: **`message??"Your payment may still be processing`**. The literal
+copy on its own is in both builds and proves nothing; what is new is its *adjacency* to `message`,
+which comes from `verify.error?.message ?? "…"` in
+`client/src/pages/PaymentComplete.tsx` at `e471f98`. Before it, that literal stood alone in the JSX.
+Present in the bundle served by **both** hosts.
+
+**The server half is proved by the 503, and it is the better of the two probes.** An unauthenticated
+POST carrying no secret reaches `registerReconciliationEndpoint`, which answers
+`503 {"error":"Scheduled tasks are not configured"}`. A host without `e471f98` could not produce that
+string — it would serve the SPA shell or a 404 — so the endpoint is live on both. And because
+`reconcilePayments.ts:182` refuses before it authenticates when the variable is unset, **the same
+probe also reports that Render holds no `SCHEDULED_TASKS_SECRET`**: see "The sweep is deployed and
+switched off". Two facts, one request, no credential.
+
+Ticket 27's own marker, `CONFIG_STORAGE_KEY = "spellcode-supabase-config"`
+(`shared/supabaseSession.ts:27`), is still present in both bundles, so that fix has not been
+regressed by anything since.
 
 **Ticket 26 was unaffected by that deployment and stayed open**, the stale project still serving its
 pre-fix shell and still answering the API path with HTML. **It is closed as of 2026-09-28** — see
 "The production address changed".
 
-## Verified state, 2026-09-25
+## Verified state, 2026-10-01
 
-- **Suite: 217 passed, 2 skipped, 0 failed, of 219, across 34 files.** Re-run after `703e1cf` was
-  committed, so with CRLF normalisation applied — not quoted from a commit message. The two skips are
-  the credential-gated tests in `server/external-config.test.ts` and each prints its reason
-  (`SUPABASE_URL, SUPABASE_ANON_KEY not set`, `PAYSTACK_SECRET_KEY not set`). Any other skip, or any
-  failure, is new.
-- `npx tsc --noEmit` clean. `npx vite build` clean.
-- **The last commit that changed code is `703e1cf`** (ticket 27), which is where the three figures
-  above were measured. Everything committed after it is documentation and one shell script, so those
-  figures still describe the code that runs — but nobody has re-run them to say so.
+**Re-measured 2026-10-01 at `e471f98`**, because the self-test below had gone red: the reconciliation
+work added 1,112 lines across 11 files in `server/` and `client/`, so every figure in the previous
+revision of this section described code that no longer existed. The section worked as designed — it
+said to re-run rather than to trust — and this is that re-run.
 
-  **This section no longer states what HEAD is.** It said `703e1cf`, then `840921e`, and went stale
-  both times within a day — once inside the very commit that corrected it. A SHA in a file is a claim
-  that rots; the same question answered from git cannot. Ask git:
+- **Suite: 264 passed, 2 skipped, 0 failed, of 266, across 37 files.** Up from 217 of 219 across 34
+  at `703e1cf`; the three new files and 47 new tests are tickets 33, 34 and 35. The two skips are
+  unchanged — the credential-gated tests in `server/external-config.test.ts`, each printing its
+  reason (`SUPABASE_URL, SUPABASE_ANON_KEY not set`, `PAYSTACK_SECRET_KEY not set`). Any other skip,
+  or any failure, is new.
+- `npx tsc --noEmit` clean. `npx vite build` clean, in 1m 48s.
+- **The last commit that changed code is `e471f98`** (ticket 35), which is where the three figures
+  above were measured, and it **is** the tip as this is written. Do not read that as licence to
+  assume it still is.
+
+  **This section does not state what HEAD is.** It used to, said `703e1cf`, then `840921e`, and went
+  stale both times within a day — once inside the very commit that corrected it. A SHA in a file is a
+  claim that rots; the same question answered from git cannot. Ask git:
 
   ```bash
   git log --oneline -1 && git status --short && git ls-remote origin main
@@ -346,14 +450,16 @@ pre-fix shell and still answering the API path with HTML. **It is closed as of 2
   the figures above have gone stale — i.e. whether code has landed since they were taken:
 
   ```bash
-  git diff --stat 703e1cf..HEAD -- server client shared
+  git diff --stat e471f98..HEAD -- server client shared
   ```
 
   Empty output means the suite, `tsc` and `vite build` results above still hold. Any output means
-  re-run them before trusting this section.
-- `18b4bd4`, `285bdf1` and `703e1cf` are pushed **and deployed**, `703e1cf` confirmed on both hosts
-  ("Deployment confirmed"). Commits after it have been docs-only and change nothing either host
-  serves; the `git diff --stat` above is how you check that is still true.
+  re-run them before trusting this section. **Update the SHA in that command whenever you re-measure**,
+  or it silently starts comparing against the wrong baseline — it named `703e1cf` for three days after
+  that stopped being where the figures were taken.
+- **`e471f98` is pushed and deployed**, confirmed on both hosts by probe ("Deployment confirmed").
+  `18b4bd4`, `285bdf1` and `703e1cf` are its ancestors and were each confirmed the same way in turn.
+  Nothing is unpushed and nothing is awaiting a rebuild.
 - The merged local branch `ticket/14-replay-path-runnable` still exists, as do
   `fix/domain-model-alignment` and `claude/clever-roentgen-440fc0` (a worktree under `.claude/`).
 
@@ -404,8 +510,9 @@ a reset is off the table.
 ## What is left, in order
 
 1. ~~**Push `703e1cf` and confirm both hosts rebuilt.**~~ **Done 2026-09-25**, both halves —
-   `origin/main` is at `703e1cf` and both hosts serve a bundle carrying the fix ("Deployment
-   confirmed"). Nothing below is blocked on it any more.
+   `origin/main` was at `703e1cf` that day and both hosts served a bundle carrying the fix. The same
+   check has since been repeated at `e471f98` ("Deployment confirmed"). Nothing below is blocked on
+   it any more.
    Kept in place rather than deleted so the list reads as a record. **Cite these items by title, not
    by number** — the 2026-09-25 rewrite renumbered them, which silently broke the references in
    tickets 21 and 23; both now name what they mean.
@@ -498,15 +605,18 @@ a reset is off the table.
    - [ ] Both Forge follow-ups done.
    - Ticket 11 is **off this list** — its server half deploys with the Render build.
    - Not gates: the Android release (closed), and an API domain (dropped when Android closed).
-6. **The reconciliation work — now tickets 33, 34 and 35.** **Ticket 29 was grilled and split on
-   2026-09-28**; it is the parent and holds the evidence, and its three open questions are answered
-   there. **33** (a payment transition is conditional at the database) and **34** (a Subscription
-   begins at verified payment) have no blockers and can start immediately; **35** (the sweep itself)
-   is blocked by both. Take them with `/implement`, clearing context between each.
+6. ~~**The reconciliation work — tickets 33, 34 and 35.**~~ **Built and deployed 2026-09-28,
+   confirmed live 2026-10-01.** All three closed, `/implement` and `/code-review` each, one commit
+   per ticket. **What remains is the two operator steps in "The sweep is deployed and switched
+   off"** — the migration and `SCHEDULED_TASKS_SECRET` in two places — **and until they are done the
+   sweep is committed but catching nothing.**
 
-   **34 is the one to review carefully**: it edits `initializeCheckout`, the only function with
-   production evidence behind it, and it carries ADR 0005 plus a `CONTEXT.md` change. A second
-   test-mode checkout after it lands is cheap insurance.
+   **The insurance this item asked for is still owed.** It said a second test-mode checkout after 34
+   lands is cheap insurance, because 34 edits `initializeCheckout`, the only function with production
+   evidence behind it. **That checkout has not been run.** 34's tests cover the guard, and its own
+   acceptance list leaves the live-checkout box unticked for exactly this reason. Run one.
+
+   **ADR 0005** came out of 34, and `CONTEXT.md` changed with it.
 
    The original ticket 29 text, kept below for its evidence:
    Nothing server-side ever re-examines a `payment_transactions` row left at `initialized`, so a paid
@@ -657,6 +767,16 @@ Each was surfaced to the user and none overruled. Do not silently reverse them.
   are `cancelled` as of 2026-09-28 and no longer match `server/paystack.ts:48`.
 - ~~The 03:43Z ₦120,000 needs reconciling through `/payment/complete`.~~ It is on another Paystack
   business and was test money. Ticket 30, closed as a no-op.
+- ~~Everything committed after `703e1cf` is documentation and changes nothing either host serves.~~
+  **Said twice, true when written, false within days both times.** `e471f98` is the code tip now. Ask
+  `git diff --stat` rather than repeating the claim a third time.
+- ~~The reconciliation work is engineering work waiting on `/implement`.~~ Tickets 33, 34 and 35 are
+  built and live. What is left is a migration and a secret.
+- ~~`PaymentComplete.tsx` tells a Learner whose payment was reversed that it "may still be
+  processing".~~ Closed in `e471f98` itself: the page now renders the server's own message and falls
+  back to that copy only when there is none. Ticket 35's Comments called it an open loose end "worth
+  a ticket" in one paragraph and corrected that two paragraphs later; **the stale half is struck as
+  of 2026-10-01.** Read the whole of a ticket's Comments before acting on any one finding in them.
 
 ## Suggested skills
 
@@ -671,6 +791,11 @@ Each was surfaced to the user and none overruled. Do not silently reverse them.
 - **`grill-with-docs`** — for F1, which is an idea rather than a procedure.
 - **`diagnosing-bugs`** — for the dev server that never binds, if that becomes a ticket. It is the
   shape that skill is for: no output, no error, and no obvious first glance.
+- **`wizard`** — for everything now outstanding, which is all operator work: the ticket 35 migration
+  and secret, ticket 32's plan codes, ticket 31's key rotation, and the remaining two stages of
+  `finish-switch-wizard.sh`. That list has been re-explained to an agent in three separate sessions,
+  which is the signal the skill exists for. **Whatever it generates must not re-walk a stage already
+  taken** — both existing wizards lack resume state, and that is what made stage 7 unsurvivable.
 
 No secrets appear in this document. Credentials live in environment variables; the Supabase project
 ref and the Render and Vercel addresses are public identifiers, and no key was read.
