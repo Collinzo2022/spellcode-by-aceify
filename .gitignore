@@ -123,12 +123,17 @@ skills-lock.json
 .scratch/
 
 # Local files kept beside the repo: installers, Office lock files, planning
-# spreadsheets and ad-hoc query exports
+# spreadsheets, ad-hoc query exports and working screenshots
 *.exe
 ~$*
 SpellCode_12_Week_Sprint_Plan.xlsx
 SpellCode_One_Week_Emergency_Sprint.xlsx
 Supabase Snippet Untitled query.csv
+post mrtem.png
+timeline.png
 
 # Account recovery codes: secrets, never committed
 paystack-recovery-codes.txt
+
+# Wizard resume state (stage names and timestamps, no values)
+.operator-remainder.state
