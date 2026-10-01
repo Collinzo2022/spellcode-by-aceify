@@ -33,7 +33,8 @@ it left behind, not a regression. See `issues/36-…`.
 owner cannot currently complete**, because the project it concerns is in an organization they do not
 administer; **32 is a cutover hazard**, its design settled by ADR 0004 and its remainder operator
 work; **35's sweep is deployed, switched on and proved against production on 2026-10-01** — the
-migration is run and Render holds the secret, with only the GitHub Actions half still unconfirmed.
+migration is run, both secrets are set, and a GitHub Actions run completed `success`. **Ticket 35 is
+closed in full.**
 
 **Apart from ticket 36, everything outstanding on this effort is a dashboard, a secret or a SQL
 file — read "What is left" as an operator's list with one engineering item on it.** It is also a
@@ -336,11 +337,44 @@ refused to write it off — because killing a young row kills live checkouts. Th
 behaviour, not a gap. It is also **ticket 36**: the Learner who abandoned it is refused for two hours
 with copy that names no horizon.
 
-**What is NOT proved: that GitHub Actions can run it.** The request above was made directly to the
-endpoint, which bypasses the workflow entirely. A green Actions run additionally proves `APP_URL` and
-the GitHub-side secret resolve. Until one is seen, **stage 6 of `operator-remainder.sh` stays
-unmarked** — this is deliberately not the switch-stage-8 mistake of accepting a near-miss as the
-claim.
+### The workflow runs too — 2026-10-01T01:16Z, run `36800221172`
+
+**A forced `workflow_dispatch` run completed `success`**, printing the same summary the direct call
+did. That is the larger claim the paragraph here previously withheld: `secrets.APP_URL` and
+`secrets.SCHEDULED_TASKS_SECRET` both resolve, and the sweep reaches production *through Actions*
+rather than only from a laptop. **Ticket 35 is closed in full.** Stage 6 of `operator-remainder.sh`
+is marked done, and was deliberately left unmarked until this run existed.
+
+**Every scheduled run before it had failed, and every one failed correctly.** The log of the last,
+`36793630315` at 2026-09-30T23:56:17Z, shows `APP_URL:` and `SCHEDULED_TASKS_SECRET:` both empty and
+the workflow's own guard exiting 1. The secrets were created at 23:59:37Z and 00:11:27Z — **three
+minutes and fifteen minutes after that run**. So the failures were the workflow announcing a missing
+configuration for as long as it was missing, which is what it was built to do. **Do not read that run
+history as a defect.**
+
+### The cron does not fire every ten minutes
+
+**`cron: "*/10 * * * *"` describes the request, not the behaviour.** Observed starts, read from
+`gh run list` on 2026-10-01: `23:56`, `20:16`, `15:32`, `08:52`, `02:26` — **hours apart, not
+minutes.** GitHub throttles scheduled workflows on low-activity private repositories, and this repo
+is both.
+
+The workflow's own comment anticipates drift "by tens of minutes at worst". **That estimate is wrong
+by an order of magnitude**, and the sentence should be read as an intention rather than a measurement.
+
+**The design survives it, which is why this is a documentation fix and not a ticket.** The sweep's
+success path has no age filter, so a late run still resolves a paid Learner; its death path waits two
+hours, so a late run cannot kill a live checkout. Nothing about correctness depends on the cadence —
+that was written down before the cadence was known, and it held.
+
+**What does not survive it is any claim about *latency*.** A Learner whose payment the webhook missed
+waits for the next run, and "the next run" can be four hours away, not ten minutes. Anyone sizing the
+safety net, promising a recovery time, or forcing a run by hand should use the observed figure. To
+resolve one payment now, dispatch a run rather than waiting:
+
+```bash
+gh workflow run reconcile-payments.yml
+```
 
 | | |
 |---|---|
@@ -371,7 +405,8 @@ only in the Comments.
 
 2. **Create `SCHEDULED_TASKS_SECRET`, in two places that are easy to confuse.** **Render's half is
    done** — proved by the endpoint authenticating a real request, not by a dashboard. **The GitHub
-   half is unconfirmed**, and only a workflow run confirms it. The value must match:
+   half is done too**, confirmed by a green workflow run rather than by the secret appearing in a
+   list. Both values match:
 
    | Where | Why |
    |---|---|
@@ -379,7 +414,8 @@ only in the Comments.
    | **This repo's GitHub Actions secrets** | `.github/workflows/reconcile-payments.yml` sends it as `x-spellcode-scheduled-secret` |
 
    The workflow also needs **`APP_URL`**. Setting the secret in only one place leaves the schedule
-   running every ten minutes and being refused every time.
+   running on its schedule and being refused every time — which is exactly what the run history
+   before 2026-10-01 shows. (Not "every ten minutes": see "The cron does not fire every ten minutes".)
 
 **~~Render does not have it, established by probe on 2026-10-01.~~ It has it, established the same
 day by a request it authenticated.** The probe that said otherwise was right when taken and was
@@ -462,8 +498,9 @@ POST carrying no secret reaches `registerReconciliationEndpoint`, which answers
 `503 {"error":"Scheduled tasks are not configured"}`. A host without `e471f98` could not produce that
 string — it would serve the SPA shell or a 404 — so the endpoint is live on both. And because that
 refusal is written **above** the secret check, so it fires before anything authenticates, **the same
-probe also reports that Render holds no `SCHEDULED_TASKS_SECRET`**: see "The sweep is deployed and
-switched off". Two facts, one request, no credential.
+probe also reported that Render held no `SCHEDULED_TASKS_SECRET`** — true when taken, and overtaken
+later the same day when the secret was set and the endpoint began answering 401. Two facts, one
+request, no credential. See "The sweep is deployed, switched on, and proved".
 
 Ticket 27's own marker, `CONFIG_STORAGE_KEY = "spellcode-supabase-config"`
 (`shared/supabaseSession.ts:27`), is still present in both bundles, so that fix has not been
@@ -666,8 +703,9 @@ a reset is off the table.
    confirmed live 2026-10-01.** All three closed, `/implement` and `/code-review` each, one commit
    per ticket. **The two operator steps are done** — the migration is applied and Render holds
    `SCHEDULED_TASKS_SECRET` — **and the sweep was run against production on 2026-10-01 and its effects
-   read back.** It is catching things: two long-silent orphans now carry a reason. Only the GitHub
-   Actions half is unconfirmed. See "The sweep is deployed, switched on, and proved".
+   read back**, both directly and **through a green GitHub Actions run**. It is catching things: two
+   long-silent orphans now carry a reason. **Ticket 35 is closed in full.** See "The sweep is
+   deployed, switched on, and proved".
 
    **The insurance this item asked for was run on 2026-10-01, and it paid for itself.** It said a
    second test-mode checkout after 34 lands is cheap insurance, because 34 edits `initializeCheckout`,
@@ -772,7 +810,15 @@ days after the move. **Prefer the repository to the prose**, and prefer a probe 
   under `.claude/` remain untracked and are not git's to normalise.
 - `server/_core/**` is vendored scaffold a regeneration will clobber — keep changes out of it.
   `client/src/_core/**` is not covered by that rule; `useAuth.ts` was edited under ticket 27.
-- `gh` is not installed. Tickets are local Markdown in `docs/domain-model-alignment/issues/`.
+- ~~`gh` is not installed.~~ **Corrected 2026-10-01: it is**, version 2.102.0, authenticated as
+  `Collinzo2022` with `repo` and `workflow` scopes, so `gh run list`, `gh run view --log`,
+  `gh secret list` and `gh workflow run` all work. The stale claim was load-bearing twice: it is why
+  `operator-remainder.sh` stage 6 was written to degrade to browser instructions, and why that
+  wizard's stages 3 and 5 grew a manual GitHub-secret fallback. Both are still worth keeping — a
+  fallback costs nothing and the next machine may differ — but neither was needed here.
+  **Probe before believing this line**: `command -v gh && gh auth status`.
+  Tickets remain local Markdown in `docs/domain-model-alignment/issues/`; that is a choice, not a
+  consequence of tooling.
 - Verify with `npx tsc --noEmit`, `npx vitest run`, `npx vite build`.
 - **Bundle hashes do not compare across machines.** A local `npx vite build` produces a different
   hash from Vercel's and Render's for the same commit: `@builder.io/vite-plugin-jsx-loc` embeds

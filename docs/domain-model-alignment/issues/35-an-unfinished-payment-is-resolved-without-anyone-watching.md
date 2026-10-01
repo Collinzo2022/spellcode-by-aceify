@@ -1,8 +1,11 @@
 # 35: an unfinished payment is resolved without anyone watching
 
-**Status:** done 2026-09-28 in code and tests. **Two pieces of operator work stand between this and
-working in production** — run the migration, create the two secrets — and until they are done the
-sweep is committed but not running. See Comments.
+**Status:** **closed in full 2026-10-01.** Done 2026-09-28 in code and tests; the two pieces of
+operator work that stood between it and production — the migration, and the secrets in both places —
+were completed 2026-10-01, and the sweep was then **run against production through GitHub Actions**
+(`workflow_dispatch` run `36800221172`, conclusion `success`). It is resolving real rows: the two
+orphans from the other Paystack business now carry `reconciliation_error = "Transaction reference not
+found."` See Comments, and handoff.md "The sweep is deployed, switched on, and proved".
 
 **Blocked by:** 33 (conditional payment transition), 34 (a Subscription begins at verified payment).
 
@@ -35,8 +38,10 @@ sleeps when idle, so anything started at boot stops running when the process doe
   never mean an open door.
 - It answers with a summary of what the run did, so a failed or empty run is visible to whoever
   called it.
-- **The schedule lives in this repository**, as a workflow that runs every ten minutes, not in a
-  third-party dashboard. That is deliberate: tickets 28, 30 and 31 were each a setting nobody could
+- **The schedule lives in this repository**, as a workflow asking for every ten minutes, not in a
+  third-party dashboard. (**It does not get every ten minutes.** Measured 2026-10-01, GitHub starts
+  these runs *hours* apart on this repo — see handoff.md, "The cron does not fire every ten minutes".
+  Nothing here depends on the cadence, but no promise about latency should be built on the `*/10`.) That is deliberate: tickets 28, 30 and 31 were each a setting nobody could
   see from the code, and each cost hours. A schedule in a file is reviewable in a pull request.
 
 **The scheduler's timing is best-effort and may drift by tens of minutes. That is acceptable** and
