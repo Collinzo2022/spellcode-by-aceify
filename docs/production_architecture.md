@@ -90,6 +90,20 @@ There is no API domain. A host move means editing `vercel.json` and the Paystack
 
 **Verifying that a deployment took effect.** `vercel.json` naming Render proves nothing about what the production alias serves; the two have already disagreed. Ask the deployed site for a route only the backend answers — `GET /api/mobile/config` — and read the content type. `application/json` means the rewrite is live. `text/html` means the SPA shell came back instead, and the alias is serving a deployment older than the commit.
 
+That answers whether *a* backend is there, and not **which commit it is running**. `GET /api/version` answers that, from Render's own automatic variables:
+
+```bash
+curl -s https://spellcode-by-aceify-two.vercel.app/api/version
+```
+
+```json
+{"commit":"<sha>","branch":"main","repo":"Collinzo2022/spellcode-by-aceify","service":"spellcode-backend","startedAt":"<iso>"}
+```
+
+Compare `commit` against `git rev-parse HEAD`. Three readings are worth knowing apart. A **stale `commit`** means Render has not finished, or auto-deploy is off; builds take minutes on a free instance, so a push verified seconds later is expected to be stale. A **`repo` that is not `Collinzo2022/spellcode-by-aceify`** is the failure named below — a platform connected to an earlier home of this code, sitting at whatever commit it last saw while pushes appear to succeed — and the commit alone cannot show it, because that stale commit is a real one. **Every field `null`** means the process is not on Render at all, which is what a local `pnpm dev` answers.
+
+`startedAt` distinguishes a deploy from a cold start: a free instance that slept and woke is running the same code it was. The route is unauthenticated and carries no environment values, so it is safe to curl from anywhere, and it needs nothing configured in order to work — which is the point, since the thing it diagnoses is a misconfiguration.
+
 ## Required Vercel environment variables
 
 The Vercel static frontend requires no server-side Supabase, Paystack, storage, or AI secrets. Those values live only in the Render service's environment. Do not commit values to the repository.

@@ -3,6 +3,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerStorageProxy } from "./_core/storageProxy";
 import { appRouter } from "./routers";
 import { createContext } from "./_core/context";
+import { registerBuildIdentity } from "./buildIdentity";
 import { registerPaystackWebhook } from "./paystack";
 import { registerReconciliationEndpoint } from "./reconcilePayments";
 import { registerMobileRoutes } from "./mobile";
@@ -13,6 +14,7 @@ export function createSpellCodeApp() {
   const app = express();
   app.use(express.json({ limit: "50mb", verify: (req, _res, buffer) => { (req as express.Request & { rawBody?: Buffer }).rawBody = buffer; } }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  registerBuildIdentity(app);
   registerUtcOffsetContract(app);
   registerStorageProxy(app);
   registerPaystackWebhook(app);
