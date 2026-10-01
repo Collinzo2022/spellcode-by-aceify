@@ -5,8 +5,10 @@ described tickets 24 and 27 as outstanding. Both are done. **Revised 2026-09-28*
 path works", which is the first genuinely new thing since the rewrite, and "The production address
 changed", where ticket 26 is now closed. **Revised 2026-10-01**: tickets 33, 34 and 35 are built and
 deployed, so the reconciliation work is now **operator work, not engineering work** — see "The sweep
-is deployed and switched off". The verification figures and the deployment table were both re-measured
-the same day, having gone stale exactly as the "Verified state" self-test predicted. Repo:
+is deployed, switched on, and proved". The verification figures and the deployment table were both
+re-measured the same day, having gone stale exactly as the "Verified state" self-test predicted.
+**Later the same day** the sweep was switched on and run against production, and **ticket 36 was
+opened** — so the claim that nothing waits on an engineer no longer holds. Repo:
 `C:\Users\aefue\Desktop\Projects\Spellcode\spellcode-by-aceify`.
 
 **Moved 2026-09-25 from `.scratch/domain-model-alignment/` to `docs/domain-model-alignment/`, and
@@ -16,17 +18,26 @@ repo access, and edits to them belong in commits like any other file.** Two cons
 carrying: the backend engineer working on F2 can now read these directly, and a deleted ticket is
 recoverable from history rather than gone.
 
-**The effort is over as a build, and every ticket in it is now closed.** Tickets 01–28, **30**, and
-**33, 34 and 35** are done; **ticket 29 was grilled and split on 2026-09-28** and is their parent,
-not work in itself. **Nothing on this effort is waiting on an engineer.**
+**The effort is over as a build.** Tickets 01–28, **30**, and **33, 34 and 35** are done; **ticket 29
+was grilled and split on 2026-09-28** and is their parent, not work in itself.
 
-**Open: 31 and 32, both operator work, plus the two operator steps ticket 35 left behind.** **31 the
+**Amended 2026-10-01: ticket 36 is open engineering work**, and the sentence that stood here —
+*"nothing on this effort is waiting on an engineer"* — was true for about nine hours. It was found by
+*running* the operator wizard, which is the point of having written one: stage 7's live checkout was
+abandoned at the Paystack page, and every retry since is refused for two hours with copy that names
+no horizon and offers no way back. That is ticket 34's lockout at a shorter duration — the remainder
+it left behind, not a regression. See `issues/36-…`.
+
+**Open: 31 and 32, both operator work, plus the two operator steps ticket 35 left behind, plus 36.**
+**31 the
 owner cannot currently complete**, because the project it concerns is in an organization they do not
 administer; **32 is a cutover hazard**, its design settled by ADR 0004 and its remainder operator
-work; **35's sweep is deployed and refusing every request** until a secret and a migration land.
+work; **35's sweep is deployed, switched on and proved against production on 2026-10-01** — the
+migration is run and Render holds the secret, with only the GitHub Actions half still unconfirmed.
 
-**Everything now outstanding on this effort is a dashboard, a secret or a SQL file — read "What is
-left" as an operator's list, not an engineer's.** It is also a wizard, written 2026-10-01:
+**Apart from ticket 36, everything outstanding on this effort is a dashboard, a secret or a SQL
+file — read "What is left" as an operator's list with one engineering item on it.** It is also a
+wizard, written 2026-10-01:
 
 ```bash
 bash docs/domain-model-alignment/operator-remainder.sh
@@ -288,11 +299,48 @@ cold start is over 45 seconds, so a webhook arriving at a sleeping instance **ex
 and the retry an hour later finds it asleep again. "A Render instance that does not sleep" is a
 **stage 10 blocker**, not a nice-to-have: wake Render before the test checkout.
 
-## The sweep is deployed and switched off — 2026-10-01
+## The sweep is deployed, switched on, and proved against production — 2026-10-01
+
+**Superseding this section's own earlier title, "deployed and switched off".** Both operator steps
+below were completed on 2026-10-01 and the sweep was then **run against production and its effects
+read back**. The safety net is live and catching things.
 
 **Tickets 33, 34 and 35 are built, reviewed, committed and live on both hosts.** They are the
-reconciliation work, and they are the last engineering on this effort. What they leave behind is
-**two operator steps, and until both are done the safety net is committed but catching nothing.**
+reconciliation work, and they are the last engineering on this effort.
+
+### Proved, by running it — 2026-10-01T00:49Z
+
+An authenticated `POST` to `/api/scheduled/reconcile-payments`, carrying the secret from `.env`,
+returned:
+
+```json
+{"examined":3,"recorded":0,"mismatched":0,"died":0,"leftAlone":1,"unrecognised":2,"failed":0}
+```
+
+Three facts in one request, none of them inferred:
+
+- **The secret matches.** The endpoint authenticated rather than answering 401, so Render's value and
+  `.env` agree — which is the one thing a 401 probe could never establish.
+- **The migration has been run.** `reconciliation_error` selects, and more than that, it was
+  **written to** — see below. The `information_schema` query under step 1 is no longer the way to
+  answer this; the column's contents answer it.
+- **`unrecognised: 2` is ticket 30's orphans, handled exactly as ticket 30 specified.** Both rows now
+  carry `reconciliation_error = "Transaction reference not found."` They are the payments on the
+  other Paystack business, and they are neither paid nor abandoned — the third row state ticket 30
+  said the sweep would have to handle. It flagged them for a human, did **not** rewrite their status,
+  and did not guess. Two rows silent since 2026-09-25 now say what is wrong with them.
+
+**`leftAlone: 1` is correct and is the interesting one.** It is a checkout abandoned at 00:27:01Z,
+younger than `ABANDONED_CHECKOUT_CUTOFF_MS`. The sweep asked Paystack, was not told "settled", and
+refused to write it off — because killing a young row kills live checkouts. That restraint is the
+behaviour, not a gap. It is also **ticket 36**: the Learner who abandoned it is refused for two hours
+with copy that names no horizon.
+
+**What is NOT proved: that GitHub Actions can run it.** The request above was made directly to the
+endpoint, which bypasses the workflow entirely. A green Actions run additionally proves `APP_URL` and
+the GitHub-side secret resolve. Until one is seen, **stage 6 of `operator-remainder.sh` stays
+unmarked** — this is deliberately not the switch-stage-8 mistake of accepting a near-miss as the
+claim.
 
 | | |
 |---|---|
@@ -306,25 +354,24 @@ leg reporting `verified: true` for a payment deliberately **not** granted, and t
 found a flag that could be stranded on a settled payment for good. Both are fixed; the reasoning is
 only in the Comments.
 
-### The two operator steps
+### The two operator steps — both done 2026-10-01
 
-1. **Run `docs/supabase_payment_reconciliation_migration.sql`** against the live project
-   (`jttycbhcziffiukpcwvd`). It adds `payment_transactions.reconciliation_error`, which is how a
-   payment the sweep could not resolve becomes visible to a human. **Whether it has been run is not
-   established** — it needs a credentialled read and none was taken on 2026-10-01. Ask the database:
+1. ~~**Run `docs/supabase_payment_reconciliation_migration.sql`** against the live project
+   (`jttycbhcziffiukpcwvd`).~~ **Done.** It adds `payment_transactions.reconciliation_error`, which is
+   how a payment the sweep could not resolve becomes visible to a human. The earlier text here said
+   *"whether it has been run is not established"* and offered an `information_schema` query; that is
+   settled — the column reads back **and carries values the sweep wrote**, which is the stronger
+   proof, since a column can exist and still never be reachable by the code.
 
-   ```sql
-   select column_name from information_schema.columns
-   where table_name = 'payment_transactions' and column_name = 'reconciliation_error';
-   ```
-
-   **An unrun migration is survivable here, and that is deliberate.** Ticket 35's review moved the
+   **An unrun migration was survivable here, and that was deliberate.** Ticket 35's review moved the
    flag-clearing write out of the shared settlement path precisely because naming this column there
    meant a deploy ahead of the migration would have failed the webhook and the browser return leg as
    well as the sweep — **one unrun migration stopping every payment in the system from granting
    anything.** As it stands, an unrun migration costs only the sweep.
 
-2. **Create `SCHEDULED_TASKS_SECRET`, in two places that are easy to confuse.** The value must match:
+2. **Create `SCHEDULED_TASKS_SECRET`, in two places that are easy to confuse.** **Render's half is
+   done** — proved by the endpoint authenticating a real request, not by a dashboard. **The GitHub
+   half is unconfirmed**, and only a workflow run confirms it. The value must match:
 
    | Where | Why |
    |---|---|
@@ -334,18 +381,21 @@ only in the Comments.
    The workflow also needs **`APP_URL`**. Setting the secret in only one place leaves the schedule
    running every ten minutes and being refused every time.
 
-**Render does not have it, established by probe on 2026-10-01.** `POST` to
+**~~Render does not have it, established by probe on 2026-10-01.~~ It has it, established the same
+day by a request it authenticated.** The probe that said otherwise was right when taken and was
+overtaken within hours; both readings are kept because the *technique* is the point. `POST` to
 `/api/scheduled/reconcile-payments` with no secret returns `503 Scheduled tasks are not configured`,
-and `registerReconciliationEndpoint` returns that **only** when the variable is unset — an endpoint with a
-secret configured answers `401 Invalid scheduled task secret` instead. So the 503 is not ambiguous the
-way `switch-wizard.sh` stage 8's empty webhook-events array was: **it reads the setting rather than
-inferring it.** That
-is the difference tickets 28, 30, 31 and 32 each cost hours to learn, applied deliberately this time.
+and `registerReconciliationEndpoint` returns that **only** when the variable is unset — an endpoint
+with a secret configured answers `401 Invalid scheduled task secret` instead. So neither answer is
+ambiguous the way `switch-wizard.sh` stage 8's empty webhook-events array was: **it reads the setting
+rather than inferring it.** That is the difference tickets 28, 30, 31 and 32 each cost hours to learn,
+applied deliberately this time.
 
 **An unset secret closes the door rather than opening it** (the 503 in
-`registerReconciliationEndpoint`, which precedes the secret check), so nothing is
-exposed while this stands. What is lost is only the net: a payment left unsettled today still waits
-for someone to notice, which is ticket 29's original complaint.
+`registerReconciliationEndpoint`, which precedes the secret check), so nothing was exposed while that
+stood. What was lost was only the net: a payment left unsettled waited for someone to notice, which is
+ticket 29's original complaint. **That is now closed** — the sweep runs, and a payment it cannot
+resolve carries a sentence saying why.
 
 ## Ticket 27, and what it means for stage 10
 
@@ -614,14 +664,23 @@ a reset is off the table.
    - Not gates: the Android release (closed), and an API domain (dropped when Android closed).
 6. ~~**The reconciliation work — tickets 33, 34 and 35.**~~ **Built and deployed 2026-09-28,
    confirmed live 2026-10-01.** All three closed, `/implement` and `/code-review` each, one commit
-   per ticket. **What remains is the two operator steps in "The sweep is deployed and switched
-   off"** — the migration and `SCHEDULED_TASKS_SECRET` in two places — **and until they are done the
-   sweep is committed but catching nothing.**
+   per ticket. **The two operator steps are done** — the migration is applied and Render holds
+   `SCHEDULED_TASKS_SECRET` — **and the sweep was run against production on 2026-10-01 and its effects
+   read back.** It is catching things: two long-silent orphans now carry a reason. Only the GitHub
+   Actions half is unconfirmed. See "The sweep is deployed, switched on, and proved".
 
-   **The insurance this item asked for is still owed.** It said a second test-mode checkout after 34
-   lands is cheap insurance, because 34 edits `initializeCheckout`, the only function with production
-   evidence behind it. **That checkout has not been run.** 34's tests cover the guard, and its own
-   acceptance list leaves the live-checkout box unticked for exactly this reason. Run one.
+   **The insurance this item asked for was run on 2026-10-01, and it paid for itself.** It said a
+   second test-mode checkout after 34 lands is cheap insurance, because 34 edits `initializeCheckout`,
+   the only function with production evidence behind it.
+
+   **Half proved, and a defect found.** `initializeCheckout` ran in a browser against production,
+   built the payload and redirected to Paystack — the half that had never been exercised. The Paystack
+   page was then closed without completing, and **every retry since is refused for two hours**: the
+   in-progress guard matching a row left at `initialized`, with copy that names no horizon and offers
+   no way back to the still-payable attempt. That is **ticket 36**, and it is ticket 34's lockout at a
+   shorter duration rather than a regression. **The success path remains unproven**, so this box stays
+   unticked; it needs a third test Learner, because the stage 10 account holds an `active`
+   Subscription that 34's access guard correctly refuses.
 
    **ADR 0005** came out of 34, and `CONTEXT.md` changed with it.
 

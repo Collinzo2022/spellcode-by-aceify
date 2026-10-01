@@ -21,7 +21,7 @@ Read the file at the referenced path. The user will normally pass the path or th
 ## In this repo
 
 The active feature directory is `docs/domain-model-alignment/`, holding `spec.md`, a
-`handoff.md` recording the decisions behind the effort, 35 issues at `issues/NN-<slug>.md`, and the
+`handoff.md` recording the decisions behind the effort, 36 issues at `issues/NN-<slug>.md`, and the
 three wizards. `switch-wizard.sh` (ticket 20) and `finish-switch-wizard.sh`, which covers its
 remainder, both have **no resume state and must not be re-run** — re-running the second walks back
 through its stage 7, which cannot succeed and does not notice, so the run reads clean while the work
