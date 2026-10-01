@@ -97,6 +97,13 @@ Access is true when a Learner holds at least one Subscription in good standing. 
 **begins at verified payment**: a Learner who has started paying and not finished holds nothing,
 and no record of their intention is a Subscription. See ADR 0005.
 
+**Checkout Attempt** — a Learner's in-flight try at paying for a Plan: begun when the payment
+page is opened, resumable while it lives, and **granting nothing** (ADR 0005). It expires rather
+than ending, after a single cutoff that the checkout guard and the reconciliation sweep both
+read, so an attempt nobody finished stops blocking its Learner on its own. An Attempt that is
+paid becomes a Payment; one that expires becomes nothing. Named in ticket 36, after three
+mechanisms had spent three tickets acting on a concept with no word for it.
+
 **Payment** — a single verified movement of **real money** against a Subscription, matched to a
 Paystack reference. The money is what makes it a Payment: a charge the payment provider accepted
 without money moving is a Test Charge, never a Payment, whatever its record says.

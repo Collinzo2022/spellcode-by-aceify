@@ -1,9 +1,40 @@
 # 36: an abandoned checkout locks the Learner out for two hours, and says nothing
 
-**Status:** open, not started. Found 2026-10-01 while running `operator-remainder.sh` stage 7 — the
-live test checkout ticket 34 asked for and never got.
+**Status:** closed 2026-10-01, in tests. Found the same day while running `operator-remainder.sh`
+stage 7 — the live test checkout ticket 34 asked for and never got.
 
-**Blocked by:** None (can start immediately).
+**What was built.** `initializeCheckout`'s in-progress branch now returns the Attempt a Learner
+already has, so the client redirects to their own payment page instead of showing a toast.
+`authorization_url` is persisted beside `access_code` at initialization, and `resumableCheckoutUrl`
+reads only that field, only when it is under Paystack's own checkout host. An Attempt carrying no
+such URL still refuses, now with `unresumableAttemptMessage`, which names the remaining wait.
+**Checkout Attempt** is in `CONTEXT.md`.
+
+**The access-code derivation this ticket proposed was not built.** Paystack's documentation states
+the URL form only by example — `authorization_url: "https://checkout.paystack.com/nkdks46nymizns7"`
+beside `access_code: "nkdks46nymizns7"` — and tickets 28, 30 and 32 are each a provider detail
+inferred rather than read. The only rows that would have needed the inference are ones written
+before the field was persisted, and the sole live one, the owner's from 2026-10-01T00:27Z, expired
+at 02:27Z before this was built. So the ticket's conditional fallback became the whole mechanism,
+and nothing rests on the example.
+
+The host check is the one thing here the ticket did not ask for. It exists because
+`findOrCreateRecurringPayment` writes a raw webhook body to the same column at the same status, and
+the URL is assigned to `window.location.href` in `Access.tsx`. A `charge.success` body carries no
+`authorization_url`, so such a row answers `null` and falls through to the message; the check means
+that even one that did carry a URL could only send a Learner to Paystack.
+
+Nothing in the three things this ticket said not to touch was touched: the cutoff, the guard's state
+filter, and the sweep's death path are unchanged.
+
+**Still not verified.** No live checkout has been resumed in a browser — the fix is covered in
+`server/paystack.checkout.test.ts` and nowhere else, and the first real exercise of it will be
+`operator-remainder.sh` stage 7. Whether an access code outlives the two-hour cutoff is unknown:
+Paystack publishes no TTL, and the failure mode if it is shorter is a Learner resumed onto an
+expired Paystack page rather than a wrong grant.
+
+**Blocked by:** nothing, and nothing was. The sections below are the ticket as it was written, kept
+unedited because the argument against the obvious fix is the valuable part of it.
 
 Ticket 34 removed a **permanent** lockout: a `pending` Subscription written at checkout that nothing
 ever cleared, so one abandoned checkout barred that Learner from that Plan forever. This ticket is

@@ -14,8 +14,13 @@ const checkout = { userId: "learner-1", email: "learner@example.com", planCode: 
  * The two tables the guard reads, as a scenario rather than a call order: it asks
  * two questions of two tables, and a test that pinned the sequence would have to be
  * rewritten every time the order changed rather than when the behaviour did.
+ *
+ * A payment row carries what the resume path needs, because a row that a test stages
+ * without a `provider_payload` is a real row shape too - everything written before
+ * ticket 36, and everything `findOrCreateRecurringPayment` writes.
  */
-type StubbedRows = { subscriptions: Array<{ status: string }>; payments: Array<{ status: string; created_at: string }> };
+type StubbedPayment = { status: string; created_at: string; id?: string; paystack_reference?: string; provider_payload?: unknown };
+type StubbedRows = { subscriptions: Array<{ status: string }>; payments: StubbedPayment[] };
 
 /** A timestamp `ageMs` in the past, so a row's age is stated in the terms the cutoff is. */
 const aged = (ageMs: number) => new Date(Date.now() - ageMs).toISOString();
@@ -50,6 +55,10 @@ describe("starting a checkout", () => {
         const since = /created_at=gte\.([^&]+)/.exec(path);
         if (!since) throw new Error(`the in-progress guard carried no age filter: ${path}`);
         const cutoff = decodeURIComponent(since[1]);
+        // The resume path reads the row's payload, so the query has to ask for it. Without
+        // this the stub would answer a column production had stopped selecting, and every
+        // resume test below would pass against a guard that could only ever throw.
+        if (!/select=[^&]*provider_payload/.test(path)) throw new Error(`the in-progress guard did not select provider_payload: ${path}`);
         return rows.payments.filter(row => wanted.includes(row.status) && row.created_at >= cutoff).slice(0, 1);
       }
       if (path.includes("/rest/v1/payment_transactions") && init?.method === "POST") return [{ id: "payment-1" }];
@@ -80,27 +89,111 @@ describe("starting a checkout", () => {
     await expect(initializeCheckout(checkout)).rejects.toThrow("You already have access through this plan.");
   });
 
-  it("refuses a Learner whose checkout is still live, distinguishably from one who already has access", async () => {
-    rows.payments = [{ status: "initialized", created_at: aged(5 * 60 * 1000) }];
-    await expect(initializeCheckout(checkout)).rejects.toThrow("A payment for this plan is already in progress.");
+  /**
+   * A live attempt as the guard finds it: the row `initializeCheckout` wrote minutes ago,
+   * carrying the payload that makes it resumable. Overridable rather than fixed because
+   * the interesting cases are all one field away from it.
+   */
+  const liveAttempt = (overrides: Partial<StubbedPayment> = {}): StubbedPayment => ({
+    id: "payment-earlier",
+    paystack_reference: "spellcode-earlier",
+    status: "initialized",
+    created_at: aged(5 * 60 * 1000),
+    provider_payload: { access_code: "earlier-access-code", authorization_url: "https://checkout.paystack.com/earlier-access-code", plan_code: TEST_INSTALLMENT_PLAN.code },
+    ...overrides,
+  });
+
+  // The fix for ticket 36. Waiting out the cutoff and starting over are both worse than
+  // the attempt the Learner already has, which is still payable on Paystack's side, so
+  // the guard hands it back instead of refusing. The client redirects on the success
+  // path exactly as it does for a new checkout, so the Learner sees no error at all.
+  it("hands back the checkout a Learner already started rather than refusing them", async () => {
+    rows.payments = [liveAttempt()];
+
+    await expect(initializeCheckout(checkout)).resolves.toEqual({
+      authorizationUrl: "https://checkout.paystack.com/earlier-access-code",
+      reference: "spellcode-earlier",
+      paymentId: "payment-earlier",
+    });
+  });
+
+  // Two attempts for one intention is the shape of every double-charge in this effort's
+  // history. Resuming must reuse the reference, not mint a second one beside it.
+  it("starts no second attempt when it resumes the first", async () => {
+    rows.payments = [liveAttempt()];
+    await initializeCheckout(checkout);
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(writesTo("payment_transactions")).toHaveLength(0);
+  });
+
+  // The field the resume path reads, written at the only moment Paystack ever says it. A
+  // checkout that did not persist it is an Attempt nobody can reopen, which is the defect.
+  it("persists the checkout URL Paystack returned, so the Attempt can be reopened", async () => {
+    await initializeCheckout(checkout);
+
+    const [[, init]] = writesTo("payment_transactions") as Array<[string, { body: string }]>;
+    expect(JSON.parse(init.body).provider_payload).toMatchObject({ authorization_url: "https://checkout.paystack.com/abc" });
+  });
+
+  // Only the URL Paystack returned, never one rebuilt from the `access_code` beside it:
+  // Paystack documents that form by example rather than by rule, and an Attempt old enough
+  // to lack the stored URL is old enough to have expired.
+  it("resumes only at the URL Paystack returned, not one rebuilt from the access code", async () => {
+    rows.payments = [liveAttempt({ provider_payload: { access_code: "earlier-access-code" } })];
+
+    await expect(initializeCheckout(checkout)).rejects.toThrow(/didn't finish/);
+  });
+
+  // The URL is assigned to `window.location.href`, so a payload is not a place to take a
+  // redirect target from on trust. `provider_payload` is written by the webhook too, from
+  // a body Paystack posts, and a stored URL that is not Paystack's checkout is not one.
+  it("refuses to resume at a URL outside Paystack's checkout", async () => {
+    rows.payments = [liveAttempt({ provider_payload: { authorization_url: "https://evil.example/pay" } })];
+
+    await expect(initializeCheckout(checkout)).rejects.toThrow(/didn't finish/);
+  });
+
+  it("refuses a Learner whose live Attempt cannot be reopened, distinguishably from one who already has access", async () => {
+    // Nowhere to resume to: every row written before ticket 36, and every row
+    // `findOrCreateRecurringPayment` writes from a webhook body.
+    rows.payments = [liveAttempt({ provider_payload: { plan_code: TEST_INSTALLMENT_PLAN.code } })];
+    await expect(initializeCheckout(checkout)).rejects.toThrow(/didn't finish/);
 
     rows = { subscriptions: [{ status: "active" }], payments: [] };
     // Two questions, two answers. One message for both is what hid the lockout: a Learner
     // barred by a dead row was told they already had access they did not have.
-    await expect(initializeCheckout(checkout)).rejects.not.toThrow("A payment for this plan is already in progress.");
+    await expect(initializeCheckout(checkout)).rejects.toThrow("You already have access through this plan.");
+  });
+
+  // The old message stated a fact with no horizon in it, so a Learner had nothing to act on
+  // and no way to tell a two-hour wait from a permanent refusal. The server holds
+  // `created_at`, so the remaining time is computable rather than a guess.
+  it("tells a Learner who cannot resume when they can start again", async () => {
+    rows.payments = [liveAttempt({ created_at: aged(ABANDONED_CHECKOUT_CUTOFF_MS - 25 * 60 * 1000), provider_payload: null })];
+
+    await expect(initializeCheckout(checkout)).rejects.toThrow("You can start again in about 25 minutes");
+  });
+
+  it("counts the horizon down as the attempt ages", async () => {
+    rows.payments = [liveAttempt({ created_at: aged(10 * 60 * 1000), provider_payload: null })];
+
+    await expect(initializeCheckout(checkout)).rejects.toThrow("You can start again in about 2 hours");
   });
 
   // Both boundary tests read the exported cutoff rather than restating two hours, because
   // the point of the constant is that this guard and ticket 35's sweep cannot drift apart. A
   // test carrying its own 7200000 would keep passing after one of them moved.
-  it("lets a Learner start again once their abandoned checkout is past the cutoff", async () => {
-    rows.payments = [{ status: "initialized", created_at: aged(ABANDONED_CHECKOUT_CUTOFF_MS + 60 * 1000) }];
-    await expect(initializeCheckout(checkout)).resolves.toMatchObject({ reference: "spellcode-ref" });
+  // A resumable row makes this boundary sharper than it was: past the cutoff the attempt is
+  // not resumed either, it is replaced. A fresh reference is the whole difference.
+  it("starts a fresh checkout once an abandoned attempt is past the cutoff, rather than resuming it", async () => {
+    rows.payments = [liveAttempt({ created_at: aged(ABANDONED_CHECKOUT_CUTOFF_MS + 60 * 1000) })];
+    await expect(initializeCheckout(checkout)).resolves.toMatchObject({ reference: "spellcode-ref", authorizationUrl: "https://checkout.paystack.com/abc" });
   });
 
-  it("still refuses a checkout that is only just inside the cutoff", async () => {
-    rows.payments = [{ status: "initialized", created_at: aged(ABANDONED_CHECKOUT_CUTOFF_MS - 60 * 1000) }];
-    await expect(initializeCheckout(checkout)).rejects.toThrow("A payment for this plan is already in progress.");
+  it("still treats an attempt only just inside the cutoff as the live one", async () => {
+    rows.payments = [liveAttempt({ created_at: aged(ABANDONED_CHECKOUT_CUTOFF_MS - 60 * 1000) })];
+    await expect(initializeCheckout(checkout)).resolves.toMatchObject({ reference: "spellcode-earlier" });
   });
 
   // An attempt Paystack has already resolved is over, whatever its age. Widening the guard to

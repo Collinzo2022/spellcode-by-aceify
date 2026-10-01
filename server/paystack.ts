@@ -73,6 +73,54 @@ export function abandonedCheckoutCutoff() {
  */
 const CHECKOUT_IN_PROGRESS_STATE = "initialized";
 
+/**
+ * Where Paystack hosts a checkout, and the only host a Learner is sent to.
+ *
+ * `provider_payload` is written from a webhook body as well as from a checkout, so a
+ * URL read back out of it is not a URL to redirect to on trust - the client assigns it
+ * to `window.location.href`. Anything not under this host is discarded (ticket 36).
+ */
+const PAYSTACK_CHECKOUT_BASE = "https://checkout.paystack.com/";
+
+/**
+ * Where a still-live Checkout Attempt can be reopened, or `null` for a row carrying nowhere.
+ *
+ * Only the `authorization_url` Paystack itself returned, which `initializeCheckout` persists
+ * since ticket 36. Rebuilding the URL from the `access_code` beside it would also work -
+ * Paystack's documented example shows the code is the URL's last segment - but an example is
+ * not a stated rule, this effort has been bitten three times by a provider detail inferred
+ * rather than read (tickets 28, 30, 32), and the only rows that would need the inference are
+ * ones written before the field was persisted, all of which have since expired.
+ *
+ * Two shapes reach this column and only one of them is an Attempt: `findOrCreateRecurringPayment`
+ * writes a raw webhook body at `initialized` too. A `charge.success` body carries no
+ * `authorization_url`, so it answers `null` and the caller falls back to telling the Learner
+ * to wait - and the host check means that even a body that did carry one could only ever send
+ * them to Paystack's own checkout.
+ */
+function resumableCheckoutUrl(providerPayload: unknown) {
+  const stored = (providerPayload as { authorization_url?: unknown } | null)?.authorization_url;
+  return typeof stored === "string" && stored.startsWith(PAYSTACK_CHECKOUT_BASE) ? stored : null;
+}
+
+/**
+ * What to tell a Learner whose Attempt is still live and cannot be reopened.
+ *
+ * The message this replaced stated a fact - a payment is in progress - that named no
+ * horizon, so a two-hour wait was indistinguishable from a permanent refusal, and the
+ * Learner's only move was to press the button again (ticket 36). The server holds
+ * `created_at`, so the wait is computed rather than guessed. A `created_at` that does not
+ * parse falls back to the whole cutoff: overstating the wait is survivable, and a message
+ * reading "in about NaN minutes" is not.
+ */
+function unresumableAttemptMessage(createdAt: string) {
+  const expiresAt = new Date(createdAt).getTime() + ABANDONED_CHECKOUT_CUTOFF_MS;
+  const remainingMs = Number.isFinite(expiresAt) ? expiresAt - Date.now() : ABANDONED_CHECKOUT_CUTOFF_MS;
+  const minutes = Math.ceil(remainingMs / 60_000);
+  const horizon = minutes <= 1 ? "in about a minute" : minutes < 90 ? `in about ${minutes} minutes` : `in about ${Math.round(minutes / 60)} hours`;
+  return `You started paying for this plan and didn't finish, and that attempt cannot be reopened from here. You can start again ${horizon}.`;
+}
+
 export async function initializeCheckout(input: { userId: string; email: string; planCode: string; callbackUrl: string }) {
   const plans = await supabaseAdminRequest<Plan[]>(`/rest/v1/plans?code=eq.${encodeURIComponent(input.planCode)}&select=id,code,name,currency,amount_minor,interval,max_installments,paystack_plan_code,is_active`);
   const plan = plans[0];
@@ -87,11 +135,20 @@ export async function initializeCheckout(input: { userId: string; email: string;
   if (existingAccess.length > 0) throw new Error("You already have access through this plan.");
   // Bounded by age, so an attempt nothing ever swept stops blocking on its own. A sleeping
   // server must not be able to lock anyone out of a plan permanently.
-  const inProgress = await supabaseAdminRequest<Array<{ id: string }>>(`/rest/v1/payment_transactions?user_id=eq.${encodeURIComponent(input.userId)}&plan_id=eq.${plan.id}&status=eq.${CHECKOUT_IN_PROGRESS_STATE}&created_at=gte.${encodeURIComponent(abandonedCheckoutCutoff())}&select=id&limit=1`);
-  if (inProgress.length > 0) throw new Error("A payment for this plan is already in progress.");
+  const inProgress = await supabaseAdminRequest<Array<{ id: string; paystack_reference: string; created_at: string; provider_payload: unknown }>>(`/rest/v1/payment_transactions?user_id=eq.${encodeURIComponent(input.userId)}&plan_id=eq.${plan.id}&status=eq.${CHECKOUT_IN_PROGRESS_STATE}&created_at=gte.${encodeURIComponent(abandonedCheckoutCutoff())}&select=id,paystack_reference,created_at,provider_payload&limit=1`);
+  const attempt = inProgress[0];
+  if (attempt) {
+    // The Attempt is still payable on Paystack's side, so handing it back beats both of the
+    // alternatives this used to leave: waiting out the cutoff, or being refused with nothing
+    // to do about it. The caller redirects on this path exactly as it does for a new
+    // checkout, so a Learner who returns sees their own payment page rather than an error.
+    const authorizationUrl = resumableCheckoutUrl(attempt.provider_payload);
+    if (authorizationUrl) return { authorizationUrl, reference: attempt.paystack_reference, paymentId: attempt.id };
+    throw new Error(unresumableAttemptMessage(attempt.created_at));
+  }
   const reference = `spellcode-${crypto.randomUUID()}`;
   const result = await paystackRequest<{ authorization_url: string; access_code: string; reference: string }>("/transaction/initialize", { method: "POST", body: JSON.stringify(buildPaystackInitializePayload({ email: input.email, reference, plan, callbackUrl: input.callbackUrl, userId: input.userId })) });
-  const [payment] = await supabaseAdminRequest<PaymentRecord[]>("/rest/v1/payment_transactions", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ user_id: input.userId, plan_id: plan.id, paystack_reference: result.reference, amount_minor: plan.amount_minor, currency: plan.currency, status: "initialized", provider_payload: { access_code: result.access_code, plan_code: plan.code } }) });
+  const [payment] = await supabaseAdminRequest<PaymentRecord[]>("/rest/v1/payment_transactions", { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify({ user_id: input.userId, plan_id: plan.id, paystack_reference: result.reference, amount_minor: plan.amount_minor, currency: plan.currency, status: "initialized", provider_payload: { access_code: result.access_code, authorization_url: result.authorization_url, plan_code: plan.code } }) });
   // No Subscription is written here. A Learner who is looking at the Paystack page holds
   // nothing, and a row claiming otherwise is what barred them from ever buying the plan.
   // `recordVerifiedPayment` creates it when the money arrives - see ADR 0005.

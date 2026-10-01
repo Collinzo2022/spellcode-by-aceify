@@ -7,8 +7,9 @@ changed", where ticket 26 is now closed. **Revised 2026-10-01**: tickets 33, 34 
 deployed, so the reconciliation work is now **operator work, not engineering work** — see "The sweep
 is deployed, switched on, and proved". The verification figures and the deployment table were both
 re-measured the same day, having gone stale exactly as the "Verified state" self-test predicted.
-**Later the same day** the sweep was switched on and run against production, and **ticket 36 was
-opened** — so the claim that nothing waits on an engineer no longer holds. Repo:
+**Later the same day** the sweep was switched on and run against production, which **opened ticket
+36**, and ticket 36 was then built and closed — so the claim that nothing waits on an engineer was
+briefly false and holds again. Repo:
 `C:\Users\aefue\Desktop\Projects\Spellcode\spellcode-by-aceify`.
 
 **Moved 2026-09-25 from `.scratch/domain-model-alignment/` to `docs/domain-model-alignment/`, and
@@ -18,17 +19,24 @@ repo access, and edits to them belong in commits like any other file.** Two cons
 carrying: the backend engineer working on F2 can now read these directly, and a deleted ticket is
 recoverable from history rather than gone.
 
-**The effort is over as a build.** Tickets 01–28, **30**, and **33, 34 and 35** are done; **ticket 29
+**The effort is over as a build.** Tickets 01–28, **30**, and **33, 34, 35 and 36** are done; **ticket 29
 was grilled and split on 2026-09-28** and is their parent, not work in itself.
 
-**Amended 2026-10-01: ticket 36 is open engineering work**, and the sentence that stood here —
-*"nothing on this effort is waiting on an engineer"* — was true for about nine hours. It was found by
-*running* the operator wizard, which is the point of having written one: stage 7's live checkout was
-abandoned at the Paystack page, and every retry since is refused for two hours with copy that names
-no horizon and offers no way back. That is ticket 34's lockout at a shorter duration — the remainder
-it left behind, not a regression. See `issues/36-…`.
+**Amended 2026-10-01: ticket 36 was open engineering work for about two hours, and is closed.** The
+sentence that stood here — *"nothing on this effort is waiting on an engineer"* — was true for about
+nine of them, then false, and is true again. It was found by *running* the operator wizard, which is
+the point of having written one: stage 7's live checkout was abandoned at the Paystack page, and
+every retry was refused for two hours with copy that named no horizon and offered no way back. That
+was ticket 34's lockout at a shorter duration — the remainder it left behind, not a regression.
 
-**Open: 31 and 32, both operator work, plus the two operator steps ticket 35 left behind, plus 36.**
+`initializeCheckout` now hands the Learner back the Attempt they already have, redirecting to the
+`authorization_url` it persists at initialization, and an Attempt with no such URL refuses with the
+remaining wait named. **Nothing was resumed in a browser**, so the first real exercise of this is
+stage 7, below. The guard's cutoff, its state filter and the sweep's death path are all untouched,
+and `CONTEXT.md` now defines **Checkout Attempt**, the concept three mechanisms had been acting on
+without a word for it. See `issues/36-…`.
+
+**Open: 31 and 32, both operator work, plus the two operator steps ticket 35 left behind.**
 **31 the
 owner cannot currently complete**, because the project it concerns is in an organization they do not
 administer; **32 is a cutover hazard**, its design settled by ADR 0004 and its remainder operator
@@ -36,8 +44,8 @@ work; **35's sweep is deployed, switched on and proved against production on 202
 migration is run, both secrets are set, and a GitHub Actions run completed `success`. **Ticket 35 is
 closed in full.**
 
-**Apart from ticket 36, everything outstanding on this effort is a dashboard, a secret or a SQL
-file — read "What is left" as an operator's list with one engineering item on it.** It is also a
+**Everything outstanding on this effort is a dashboard, a secret or a SQL file — read "What is
+left" as an operator's list.** It is also a
 wizard, written 2026-10-01:
 
 ```bash
@@ -334,8 +342,10 @@ Three facts in one request, none of them inferred:
 **`leftAlone: 1` is correct and is the interesting one.** It is a checkout abandoned at 00:27:01Z,
 younger than `ABANDONED_CHECKOUT_CUTOFF_MS`. The sweep asked Paystack, was not told "settled", and
 refused to write it off — because killing a young row kills live checkouts. That restraint is the
-behaviour, not a gap. It is also **ticket 36**: the Learner who abandoned it is refused for two hours
-with copy that names no horizon.
+behaviour, not a gap. It was also **ticket 36**: the Learner who abandoned it was refused for two
+hours with copy that named no horizon. Closed the same day — that Learner would now be handed the
+Attempt back instead, though the row itself predates the field that makes that possible and simply
+expired at 02:27:01Z.
 
 ### The workflow runs too — 2026-10-01T01:16Z, run `36800221172`
 
@@ -715,8 +725,9 @@ a reset is off the table.
    built the payload and redirected to Paystack — the half that had never been exercised. The Paystack
    page was then closed without completing, and **every retry since is refused for two hours**: the
    in-progress guard matching a row left at `initialized`, with copy that names no horizon and offers
-   no way back to the still-payable attempt. That is **ticket 36**, and it is ticket 34's lockout at a
-   shorter duration rather than a regression. **The success path remains unproven**, so this box stays
+   no way back to the still-payable attempt. That was **ticket 36** — ticket 34's lockout at a shorter
+   duration rather than a regression — and it is **closed**: a Learner in that position is now
+   redirected back to the Attempt they already have. **The success path remains unproven**, so this box stays
    unticked; it needs a third test Learner, because the stage 10 account holds an `active`
    Subscription that 34's access guard correctly refuses.
 
