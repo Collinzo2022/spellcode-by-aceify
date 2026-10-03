@@ -321,6 +321,35 @@ async function recordVerifiedPayment(payment: PaymentRecord, transaction: Paysta
   return "granted";
 }
 
+/**
+ * Why a verified Paystack event could not be applied, written where a human will look.
+ *
+ * Both lookups below resolve a Plan by `paystack_plan_code`, and both used to return early when
+ * nothing matched. The event body is stored before any branch runs, which reads like a safety net
+ * and is not one: the route patches `processed_at` after the branches, so a dropped event was
+ * recorded as handled with `processing_error: null` - the same row a handled event leaves. Throwing
+ * puts the reason in `processing_error` instead, leaves `processed_at` unset, and answers non-200 so
+ * the drop also shows in Paystack's own webhook log, which is the one place a human can look without
+ * database access.
+ *
+ * The plan code is in the message because it is the whole diagnosis. ADR 0004 keeps
+ * `plans.paystack_plan_code` single and patched at cutover, so the live-mode form of this fault is a
+ * live `PLN_` arriving against a stored test one; seeing both codes side by side is what names it.
+ * ADR 0004 says it "removes the circumstance rather than the failure mode", and an unconfigured plan
+ * outlives the cutover.
+ *
+ * A consequence worth stating: Paystack retries a delivery it could not deliver, and these retries
+ * cannot succeed until someone configures the plan. That is the intended trade - a retry that
+ * succeeds the moment the column is patched, in exchange for noise that is visible rather than a
+ * silence that is not.
+ */
+function unappliedEventMessage(planCode: string, detail: string) {
+  return `Paystack event names plan ${planCode} and was not applied: ${detail}. Nothing was recorded for it - see ticket 32 and ADR 0004.`;
+}
+
+/** The lookup that fails on an unconfigured or wrong-mode plan code, named once for both call sites. */
+const NO_SUCH_PLAN = "no plans row carries that paystack_plan_code";
+
 export async function findOrCreateRecurringPayment(data: Record<string, unknown>) {
   const reference = String(data.reference ?? "");
   if (!reference) return null;
@@ -335,13 +364,17 @@ export async function findOrCreateRecurringPayment(data: Record<string, unknown>
   if (!planCode || (!customerCode && !userId)) return null;
   const plans = await supabaseAdminRequest<Plan[]>(`/rest/v1/plans?paystack_plan_code=eq.${encodeURIComponent(planCode)}&select=id,code,name,currency,amount_minor,interval,max_installments,paystack_plan_code,is_active`);
   const plan = plans[0];
-  if (!plan) return null;
+  if (!plan) throw new Error(unappliedEventMessage(planCode, NO_SUCH_PLAN));
   const subscriptionQuery = userId
     ? `/rest/v1/subscriptions?user_id=eq.${encodeURIComponent(userId)}&plan_id=eq.${plan.id}&status=in.(active,past_due)&select=id,user_id,plan_id&order=updated_at.desc&limit=1`
     : `/rest/v1/subscriptions?paystack_customer_code=eq.${encodeURIComponent(customerCode)}&plan_id=eq.${plan.id}&status=in.(active,past_due)&select=id,user_id,plan_id&order=updated_at.desc&limit=1`;
   const subscriptions = await supabaseAdminRequest<Array<{ id: string; user_id: string; plan_id: string }>>(subscriptionQuery);
   const subscription = subscriptions[0];
-  if (!subscription) return null;
+  // This one throws where `updateSubscriptionLifecycle`'s matching lookup returns, and the asymmetry
+  // is the point. Getting here means a charge arrived whose reference has no payment row, which is a
+  // renewal and not a first payment - a Subscription it renews must already exist. Money moved, so a
+  // drop here is the failure this ticket is about; there, no money has moved and the miss is routine.
+  if (!subscription) throw new Error(unappliedEventMessage(planCode, `plan ${plan.code} matched, but no active or past_due Subscription belongs to ${userId ? `Learner ${userId}` : `customer ${customerCode}`}`));
   const created = await supabaseAdminRequest<PaymentRecord[]>("/rest/v1/payment_transactions?on_conflict=paystack_reference", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" }, body: JSON.stringify({ user_id: subscription.user_id, plan_id: subscription.plan_id, subscription_id: subscription.id, paystack_reference: reference, amount_minor: Number(data.amount ?? plan.amount_minor), currency: String(data.currency ?? plan.currency), status: "initialized", provider_payload: data }) });
   return created[0] ?? (await supabaseAdminRequest<PaymentRecord[]>(`/rest/v1/payment_transactions?paystack_reference=eq.${encodeURIComponent(reference)}&select=id,user_id,plan_id,paystack_reference,amount_minor,currency,status`))[0] ?? null;
 }
@@ -355,9 +388,14 @@ async function updateSubscriptionLifecycle(input: { event: string; data: Record<
   if (!customerCode || !planCode) return;
   const plans = await supabaseAdminRequest<Plan[]>(`/rest/v1/plans?paystack_plan_code=eq.${encodeURIComponent(planCode)}&select=id,code,interval,max_installments`);
   const plan = plans[0];
-  if (!plan) return;
+  if (!plan) throw new Error(unappliedEventMessage(planCode, `${NO_SUCH_PLAN}, so ${input.event} changed nothing`));
   const subscriptions = await supabaseAdminRequest<Array<{ id: string; installments_paid: number; installments_due: number | null }>>(`/rest/v1/subscriptions?plan_id=eq.${plan.id}&paystack_customer_code=eq.${encodeURIComponent(customerCode)}&select=id,installments_paid,installments_due&order=updated_at.desc&limit=1`);
   const subscription = subscriptions[0];
+  // Deliberately NOT a throw, unlike the plan lookup above. Since ticket 34 a checkout writes no
+  // Subscription - `recordVerifiedPayment` does, on `charge.success` - so a `subscription.create`
+  // that outruns the charge finds nothing here, and that is the ordinary first-installment
+  // interleaving rather than a fault. Throwing would 500 on normal traffic. Nothing is lost by
+  // returning: these events carry no money, and the charge that does carries its own branch.
   if (!subscription) return;
   const upstreamStatus = String(subscriptionData.status ?? "");
   const status = paystackLifecycleStatus(input.event, upstreamStatus);
@@ -382,7 +420,10 @@ export function registerPaystackWebhook(app: Express) {
         if (payment) await recordVerifiedPayment(payment, { id: Number(event.data?.id ?? 0), status: "success", amount: Number(event.data?.amount ?? 0), currency: String(event.data?.currency ?? "NGN"), paid_at: String(event.data?.paid_at ?? new Date().toISOString()), authorization: event.data?.authorization as { authorization_code?: string }, customer: event.data?.customer as { customer_code?: string }, plan: event.data?.plan as { plan_code?: string } });
       }
       if (["subscription.create", "subscription.disable", "subscription.not_renew", "invoice.payment_failed", "invoice.update"].includes(event.event ?? "")) await updateSubscriptionLifecycle({ event: event.event ?? "", data: event.data ?? {} });
-      await supabaseAdminRequest(`/rest/v1/paystack_webhook_events?event_id=eq.${eventId}`, { method: "PATCH", body: JSON.stringify({ processed_at: new Date().toISOString() }) });
+      // `processing_error` is cleared, not just left: a retry of an event that failed earlier - the
+      // self-healing case, once an operator patches the plan code - would otherwise carry both
+      // columns at once and be ambiguous to exactly the person this record exists for.
+      await supabaseAdminRequest(`/rest/v1/paystack_webhook_events?event_id=eq.${eventId}`, { method: "PATCH", body: JSON.stringify({ processed_at: new Date().toISOString(), processing_error: null }) });
       return res.status(200).json({ ok: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Webhook processing failed";

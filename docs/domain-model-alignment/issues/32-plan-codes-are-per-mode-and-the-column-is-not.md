@@ -4,6 +4,16 @@
 mode. **Part operator, part design decision.** Not a code defect today — it is a cutover hazard, and
 it is the third instance of the failure shape tickets 28 and 30 each cost hours to.
 
+**Amended 2026-10-03: the engineering half is done; the cutover is untouched and still blocked.**
+"Not a code defect today" was true of the hazard and wrong about the handler — a webhook that landed
+nowhere was marked `processed_at` with no error, indistinguishable from one that granted access. See
+the 2026-10-03 entry under `## Comments`. The cutover **must not be attempted before stage 7's success path is
+proved**, because ADR 0004 ends test-mode checkout against production: *"There is no third option
+where they are tested with a test card against production."* The two installment plan codes are still
+not written down, and reading them needs the Paystack dashboard in **live** mode — the repository's
+keys are `sk_test_`/`pk_test_`, and Paystack's `/plan` endpoint only returns the plans of its key's
+mode, so no agent can fetch them from here.
+
 ## What happened
 
 Live-mode webhook set, and the plan objects created in live mode. Neither reached the application.
@@ -155,3 +165,71 @@ together with the keys, not before.
 
 No secrets appear in this file. `PLN_…` plan codes are public identifiers, and none is recorded here
 yet.
+
+## Comments
+
+### 2026-10-03 — the silent drop is closed; the cutover is not touched
+
+**ADR 0004 left the failure mode open on purpose and said so**: *"This decision removes the
+circumstance rather than the failure mode… They can still miss on an unconfigured plan, which
+`initializeCheckout` guards on the outgoing path and nothing guards on the incoming one."* That gap
+is now closed on the plan lookups, and it turned out to be worse than "silent".
+
+**A dropped event was recorded as handled.** The route stores every event body before any branch
+runs, which reads like a safety net. It then patches `processed_at` after the branches — so an event
+whose plan lookup missed was stored with `processed_at` set and `processing_error: null`, **the same
+row a successfully handled event leaves.** `processed_at` is the first column anyone auditing the
+payment path reads, and it was answering "did we handle this?" with a confident yes.
+
+The plan lookups now throw, which puts the reason in `processing_error`, leaves `processed_at` unset,
+and answers non-200 so the drop shows in **Paystack's own webhook log** as well — a second place a
+human looks, needing no database access. The message is built by `unappliedEventMessage` and **names
+the plan code**, because comparing it against the stored `plans.paystack_plan_code` is the whole
+diagnosis; "plan not found" would send the reader back to the dashboard to guess.
+
+**Seven early exits, three now throw, four left alone**, and one of those four is a correction to an
+earlier draft of this change:
+
+- `findOrCreateRecurringPayment`'s `!plan` and `updateSubscriptionLifecycle`'s `!plan` — **throw**.
+  These are the ticket's read sites 2 and 3, the two it calls "the dangerous ones".
+- `findOrCreateRecurringPayment`'s `!subscription` — **throws**. Reaching it means a charge arrived
+  whose reference has no payment row, which is a renewal rather than a first payment, so the
+  Subscription it renews must already exist. Money has moved.
+- `updateSubscriptionLifecycle`'s `!subscription` — **returns, and an earlier draft of this change
+  wrongly threw here.** Since ticket 34 a checkout writes no Subscription (`recordVerifiedPayment`
+  does, on `charge.success`), so a `subscription.create` that outruns the charge finds nothing, and
+  that is **the ordinary first-installment interleaving, not a fault**. Throwing would have answered
+  500 on the happy path of every installment plan — the plans this ticket exists to switch on. Caught
+  by the Spec axis of `/code-review`, which read the repo's own fixture comment: `present: false`
+  *"models a Learner whose first payment is landing, the path every checkout takes since ticket 34"*.
+  Two tests now pin the asymmetry from both sides.
+- `updateSubscriptionLifecycle`'s `!customerCode || !planCode` and `findOrCreateRecurringPayment`'s
+  `!reference` — **return**. An event with no plan code is one this application has no branch for,
+  which is ordinary traffic; ticket 25's connectivity probe is exactly that shape and is deliberately
+  still in production.
+
+**A remainder, named rather than fixed:** `findOrCreateRecurringPayment`'s
+`!planCode || (!customerCode && !userId)` still returns `null`, so a `charge.success` taking it is
+marked processed and answered 200 — the original defect shape, for a one-time charge whose payment row
+is missing. It is left alone deliberately: widening the throw is what produced the mistake corrected
+above, and this exit needs evidence about which real events reach it before anything throws there.
+
+**The retry consequence is accepted, not overlooked.** Paystack retries a non-200, and a retry cannot
+succeed until someone configures the plan, so an unconfigured plan now produces repeated visible
+failures. That is the trade: noise that is visible, in exchange for a silence that is not — and the
+retry succeeds on its own the moment the column is patched. The `processed_at` patch now also clears
+`processing_error`, so a self-healed event reads as handled and nothing else rather than carrying both
+columns at once; a test covers the retry.
+
+**No migration.** `paystack_webhook_events.processing_error` already existed, written only from the
+route's `catch` until now. This matters, because the migration half of this ticket is the blocked
+half.
+
+Nine tests in `server/paystack.webhook.test.ts`, under "Paystack webhook events that land nowhere".
+Three assert the paths that must **not** be disturbed — the handled charge, the deliberately ignored
+event, and the lifecycle event that outran its charge — because distinguishability has to be pinned
+from both directions. `tsc --noEmit` clean.
+
+**This is engineering, and it does not advance the cutover.** All three `Done when` boxes are
+unchanged. The cutover **must not be attempted before stage 7's success path is proved**: ADR 0004
+ends test-mode checkout against production.
