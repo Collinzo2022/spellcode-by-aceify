@@ -152,6 +152,16 @@ it one.
 Paystack dashboard in live mode, record them, and apply them with `billing.updatePlan` — at cutover,
 together with the keys, not before.
 
+**There is a wizard for it as of 2026-10-03**, and it is the fourth in this directory:
+
+```bash
+bash docs/domain-model-alignment/cutover-wizard.sh
+```
+
+Eight stages, **and it refuses to run today** — see the third `## Comments` entry for why that
+refusal is the feature. It resumes, so it is safe to re-run, which `switch-wizard.sh` and
+`finish-switch-wizard.sh` are not.
+
 ## Related
 
 - **Ticket 28** — the empty Test Webhook URL. Same shape: a configuration field nobody had looked at,
@@ -233,3 +243,63 @@ from both directions. `tsc --noEmit` clean.
 **This is engineering, and it does not advance the cutover.** All three `Done when` boxes are
 unchanged. The cutover **must not be attempted before stage 7's success path is proved**: ADR 0004
 ends test-mode checkout against production.
+
+### 2026-10-03 — the cutover has a wizard, and it refuses to run
+
+`docs/domain-model-alignment/cutover-wizard.sh`, eight stages, written under `/wizard`. **Its first
+stage exits 1 today**, and that is the deliverable rather than a limitation: the gate reads
+`.operator-remainder.state` for the `checkout34` marker — the record that a post-ticket-34 test-mode
+checkout completed and was read back from the database — and that marker **is not there**. The state
+file holds `migration`, `render_secret` and `sweep_proved`, nothing else. So the wizard sends the
+operator to `operator-remainder.sh` stage 7 first, and says in as many words not to write the marker
+by hand, because it records a reading and a hand-written one is a lie about production billing.
+
+**Resume is by probe where a probe exists.** `billing.accessOptions` is a **`publicProcedure`**
+returning `is_active` and `paystack_plan_code` for every plan, so change 3's state is **read from
+production with no credential and no dashboard**:
+
+```
+GET https://spellcode-by-aceify-two.vercel.app/api/trpc/billing.accessOptions
+  full-access-one-time    is_active=true   paystack_plan_code=null
+  full-access-3-month     is_active=false  paystack_plan_code=null
+  full-access-6-month     is_active=false  paystack_plan_code=null
+```
+
+Read live on 2026-10-03, and it matches the table at the top of this ticket exactly — the first time
+that table has been confirmed rather than carried. Change 1, Render's key, **is not readable from
+anywhere**, so it is the one stage kept in a state file. That split is the lesson tickets 28, 30 and
+31 each paid hours for, applied deliberately: read the setting where you can, and say plainly where
+you cannot.
+
+**Two things the authoring turned up, both of which change what the cutover is.**
+
+1. **"The client's public key" is not a thing in this codebase.** This ticket and ADR 0004 both
+   describe change 1 as "the secret and public keys to live". `PAYSTACK_PUBLIC_KEY` is read into
+   `ENV.paystackPublicKey` in `server/_core/env.ts` and **referenced by no other module** in
+   `server/`, `client/` or `shared/` — checkout is initialized server-side and the browser only
+   follows the `authorization_url` that comes back. So change 1 is **one variable that matters**
+   (`PAYSTACK_SECRET_KEY`) and one that nothing consumes. The wizard sets both, and says which is
+   which, so nobody goes hunting for a client-side key that does not exist. Decided 2026-10-03 to
+   set it anyway: it costs one dashboard field and it is wrong in a confusing way if a Paystack
+   widget ever does land client-side.
+2. **Change 3 has a UI, and this ticket pointed at the wrong level.** It says to use
+   `billing.updatePlan` "rather than PostgREST by hand", which reads as a call an operator makes.
+   `client/src/pages/Admin.tsx` at `/admin` already has a per-plan **Paystack plan code** field, an
+   Active toggle and a Save button wired to that mutation, gated on a Supabase profile whose `role`
+   is `admin`. The wizard names the fields and the toast. **Save sends amount, code and active
+   together**, so whatever sits in the Amount box is written too — the wizard says to leave it alone,
+   which is the kind of coupling a hand-written `curl` would not have exposed.
+
+**The wizard deliberately does not ask for the live secret key.** Capturing it would mean writing it
+into this machine's `.env`, and local runs would then move real money — the circumstance ADR 0004
+exists to remove. It is a dashboard-only value, and the wizard says so.
+
+**What it still cannot prove, stated in the script itself:** that the two codes are the *live* ones
+rather than two well-formed `PLN_` strings. Nothing readable from here can tell those apart — the
+repository holds test keys and Paystack's `/plan` endpoint returns only its own mode's plans. The
+live-money test on the launch checklist is what settles it, and the wizard ends by saying so.
+
+Verified statically: `bash -n` clean, 8 `stage` calls against `TOTAL_STAGES=8`, both probe helpers
+exercised against production, no `set_secret` call anywhere — the cutover needs nothing from CI, and
+the workflow's two secrets are untouched. Not run end to end, because stage 1 refuses and stages 3
+to 6 block on a human in two dashboards.

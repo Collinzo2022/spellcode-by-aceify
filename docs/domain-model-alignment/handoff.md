@@ -79,6 +79,21 @@ keeps a state file for the three stages nothing can probe. **So it is safe to re
 `switch-wizard.sh` nor `finish-switch-wizard.sh` is. It performs tickets 35, 34 and 31, and
 **deliberately refuses ticket 32's cutover**, reporting the three coupled changes instead.
 
+**Ticket 32's cutover now has its own wizard, written 2026-10-03**, which is the fourth in that
+directory:
+
+```bash
+bash docs/domain-model-alignment/cutover-wizard.sh
+```
+
+**It refuses to run until `operator-remainder.sh` stage 7 has recorded `checkout34`**, and that
+marker is not in the state file today — so the two wizards are ordered by a gate rather than by a
+sentence in this document. It resumes the same way the one above does, and its resume for the plan
+codes is a **probe**: `billing.accessOptions` is a public procedure, so the state of the invisible
+third change is read from production with no credential. See ticket 32's third `## Comments` entry,
+which also records two findings that change what the cutover is — the "client public key" nothing
+reads, and the `/admin` UI that makes change 3 a form rather than a call.
+
 **The operator walk of 2026-09-28 is finished.** Ticket 26 closed, one Supabase project paused, the
 live-mode webhook set. `finish-switch-wizard.sh` documents the procedure, but **take it by hand** —
 the wizard has no resume state, so re-running it walks back through its stage 7, which cannot succeed.
@@ -1081,11 +1096,17 @@ Each was surfaced to the user and none overruled. Do not silently reverse them.
   And **a per-pid file tracer with a heartbeat** is the instrument for anything that stalls with no
   output: stdout was a suspect, so the trace could not go there, and a heartbeat that never appears
   distinguishes a synchronous block from an idle event loop in one line.
-- **`wizard`** — for everything now outstanding, which is all operator work: the ticket 35 migration
-  and secret, ticket 32's plan codes, ticket 31's key rotation, and the remaining two stages of
-  `finish-switch-wizard.sh`. That list has been re-explained to an agent in three separate sessions,
-  which is the signal the skill exists for. **Whatever it generates must not re-walk a stage already
-  taken** — both existing wizards lack resume state, and that is what made stage 7 unsurvivable.
+- **`wizard`** — for everything now outstanding, which is all operator work. **Spent twice, and the
+  list it was pointed at is nearly empty**: the ticket 35 migration and secret are done,
+  `operator-remainder.sh` covers ticket 31's rotation and `finish-switch-wizard.sh`'s remaining
+  stage, and **`cutover-wizard.sh` (2026-10-03) covers ticket 32's plan codes**. What is left with no
+  wizard is ticket 30's three recording actions, which are reading a dashboard and writing down what
+  it says.
+  **Whatever it generates must not re-walk a stage already
+  taken** — the first two wizards lack resume state, and that is what made stage 7 unsurvivable. Both
+  later ones obey it, and `cutover-wizard.sh` goes further by **gating on another wizard's state
+  marker** rather than on prose: it exits 1 until `operator-remainder.sh` has recorded `checkout34`.
+  That is the shape to copy — a wizard that refuses is worth more than one that warns.
 
 No secrets appear in this document. Credentials live in environment variables; the Supabase project
 ref and the Render and Vercel addresses are public identifiers, and no key was read.

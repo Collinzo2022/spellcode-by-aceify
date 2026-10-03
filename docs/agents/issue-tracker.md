@@ -21,12 +21,15 @@ Read the file at the referenced path. The user will normally pass the path or th
 ## In this repo
 
 The active feature directory is `docs/domain-model-alignment/`, holding `spec.md`, a
-`handoff.md` recording the decisions behind the effort, 36 issues at `issues/NN-<slug>.md`, and the
-three wizards. `switch-wizard.sh` (ticket 20) and `finish-switch-wizard.sh`, which covers its
+`handoff.md` recording the decisions behind the effort, 37 issues at `issues/NN-<slug>.md`, and the
+**four** wizards. `switch-wizard.sh` (ticket 20) and `finish-switch-wizard.sh`, which covers its
 remainder, both have **no resume state and must not be re-run** — re-running the second walks back
 through its stage 7, which cannot succeed and does not notice, so the run reads clean while the work
 stays open. `operator-remainder.sh` is the third and **does** resume: it re-probes what it can read
 and offers to skip the rest, which is why it is the one to reach for.
+`cutover-wizard.sh` is the fourth, added 2026-10-03 for ticket 32's live cutover; it resumes the same
+way and **refuses to run until `operator-remainder.sh` stage 7 has recorded `checkout34`**, so
+reaching for it before that is answered rather than attempted.
 Commit messages reference these by number as "ticket NN", so the
 numbering is load-bearing: `git log --grep 'ticket 14'` is how you find the work for an issue.
 
