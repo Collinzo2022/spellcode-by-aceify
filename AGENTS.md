@@ -19,6 +19,32 @@ The five canonical roles, unchanged, recorded as a `Status:` line in each issue 
 
 Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
+## Running the dev server
+
+**`npm run dev` works.** Three documents in this repo once said it could not start on this machine,
+and that false belief was cited as the reason three separate things could not be proved — for eight
+days, because nobody re-tested a "cannot". See ticket 37 for the readings.
+
+Run it from a shell **with stdout redirected to a file**, then poll `http://localhost:3000/`. On the
+first run after a dependency or config change, wait out `Re-optimizing dependencies`.
+
+Three ways to measure this wrongly, two of them demonstrated during the investigation:
+
+1. **Piping into a consumer that exits.** `npx vite … | head` prints nothing and reads as a hang;
+   the same binary redirected to a file reported ready in under half a second. **A piped
+   observation of this server is not evidence about the server.**
+2. **Probing the `127.0.0.1` literal.** Bare `vite` binds `[::1]` only, so the IPv4 literal is
+   refused while the server is serving. `npm run dev` binds `0.0.0.0` and `[::]` both — poll
+   `localhost`, not the literal.
+3. **Giving up during dependency optimization.** A probe with a short timeout reads
+   `Re-optimizing dependencies` as a hang.
+
+**Preview harnesses report success while nothing is listening.** Under `preview_start` the server
+genuinely does not bind: `tsx watch` blocks before forking its child, so nothing in `server/` ever
+runs and no port appears. The cause is undiagnosed and ticket 37 carries the measurements. Use the
+shell invocation above rather than a preview tool, and do not conclude from a preview tool that the
+server is broken.
+
 ## Replay-order SQL
 
 The files under `docs/*.sql` named in the replay order are not documentation. They are the only

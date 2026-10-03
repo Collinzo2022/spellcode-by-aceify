@@ -66,9 +66,9 @@ redirected reached `Server running on` in seconds.
 
 This is a harness interaction rather than a fault in this project, and it is why the ticket is not
 closed: **an agent reaching for a preview tool will still see a dead server and may re-reach the old
-conclusion.** The cause is not diagnosed. The cheap remedy is a line in `AGENTS.md` naming the
-invocation that works; the thorough one is finding why `tsx watch` stalls at module load under that
-launcher.
+conclusion.** The cause is not diagnosed. The cheap remedy was a line in `AGENTS.md` naming the
+invocation that works — **done**, see item 2 under "What to do". The thorough one is finding why
+`tsx watch` stalls under that launcher, and that is all box 3 has left in it.
 
 **The stall has since been narrowed, though not diagnosed** — see the 2026-10-03 entry under
 `## Comments`, which measures a stalled launcher side by side with a working one. It locates the
@@ -94,10 +94,9 @@ reached the neighbouring conclusion about instruments one day earlier; the two b
 1. ~~**Correct ticket 27 and the handoff.**~~ Done in this change: ticket 27's `## Comments` and its
    `**Status:**` block, the handoff's dev-server section, its "what is left" item 7, and its
    `diagnosing-bugs` suggestion.
-2. **Record the working invocation where an agent reads before trying**, which means `AGENTS.md`
-   rather than only the handoff: `npm run dev` from a shell with stdout redirected, then poll
-   `http://localhost:3000/` — not the `127.0.0.1` literal — and wait out `Re-optimizing
-   dependencies`.
+2. ~~**Record the working invocation where an agent reads before trying**, which means `AGENTS.md`
+   rather than only the handoff.~~ Done: `AGENTS.md` now carries a `## Running the dev server`
+   section with the invocation, all three mismeasurements, and the preview-harness warning.
 3. **Diagnose the harness failure, or decide it is not worth diagnosing** and leave the `AGENTS.md`
    line as the whole remedy. Either is a legitimate close; silently leaving it is not.
 4. **Do not read this as unblocking stage 7.** A local server is a precondition, not the proof.
@@ -105,7 +104,7 @@ reached the neighbouring conclusion about instruments one day earlier; the two b
 ## Done when
 
 - [x] Ticket 27 and the handoff no longer assert the dev server cannot start.
-- [ ] `AGENTS.md` carries the working invocation and the three mismeasurements above.
+- [x] `AGENTS.md` carries the working invocation and the three mismeasurements above.
 - [ ] The harness failure is diagnosed, or recorded as deliberately not diagnosed.
 
 ## Related
