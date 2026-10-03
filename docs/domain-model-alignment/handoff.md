@@ -11,7 +11,8 @@ re-measured the same day, having gone stale exactly as the "Verified state" self
 36**, and ticket 36 was then built and closed — so the claim that nothing waits on an engineer was
 briefly false and holds again. **Revised 2026-10-03**: ticket 36's fix is confirmed running in
 production, and the confirmation came from a route rather than a dashboard — see "Deployment
-confirmed by the running process". Repo:
+confirmed by the running process", where **ticket 32's engineering half (`0c28331`) is confirmed
+live too**, and where the same route established that Render auto-deploys unattended. Repo:
 `C:\Users\aefue\Desktop\Projects\Spellcode\spellcode-by-aceify`.
 
 **Moved 2026-09-25 from `.scratch/domain-model-alignment/` to `docs/domain-model-alignment/`, and
@@ -554,6 +555,32 @@ client-side change is still a bundle question.
 **The `/api/version` probe was answered on its first real read, which is also the first thing it
 proved.** It was written in `0fddab3` precisely because the question it answers was unanswerable from
 a terminal, and the route's own deploy was the first instance of that question.
+
+### Two further reads, and what each one settled
+
+| Read | `commit` | `startedAt` | What it established |
+|---|---|---|---|
+| 1 | `0fddab3` | `03:09:30Z` | Ticket 36 is live; `repo` is the right org |
+| 2 | `6da80a4` | `03:41:28Z` | **Render auto-deploys unattended** |
+| 3 | `0c28331` | `12:26:23Z` | **Ticket 32's engineering half is live** |
+
+**Read 2 settled an open question: auto-deploy works.** `6da80a4` reached production with nobody
+touching the Render dashboard. Pushing is sufficient; the question had been open since the switch.
+
+**Read 2 is also what taught the limit above by demonstration.** `startedAt` moved *and* `commit`
+changed, and only the pair is a deploy. A moving `startedAt` alone is a free instance waking up.
+Read 3 is the clean illustration: its `startedAt` is seven seconds before the response, because the
+probe itself woke the instance — the deploy evidence there is the changed `commit`, nothing else.
+
+**Read 3: ticket 32's throws are in production, on a path no traffic takes.** Both installment plans
+are `is_active: false` and the one-time plan sends no plan code, so the behaviour change —
+an unmatched plan code now answers 500 instead of a false `processed_at` — is live with a blast
+radius of zero. That ordering is deliberate and worth keeping: the guard is in place *before* the
+plans are switched on, not after. The cutover still must not precede stage 7 (ADR 0004).
+
+**Check the content type, not the status code.** The backend answers `200` with the SPA shell for an
+unmatched `/api/*` route, so a build predating `0fddab3` returns `text/html` and a cheerful `200`.
+All three reads above were `application/json`.
 
 Unauthenticated, deliberately — see `server/buildIdentity.ts`'s `registerBuildIdentity`, which
 records why a route diagnosing misconfiguration must not require configuration in order to speak.
