@@ -5,8 +5,10 @@ commit, and both Vercel and Render serve bundle `index-DKKVNU9H.js` containing
 `"spellcode-supabase-config"` — the `CONFIG_STORAGE_KEY` this fix introduced, so the deployment is
 proven by content and not merely by a changed hash (handoff.md, "Deployment confirmed").
 **The browser round trip is still unproven**: the hour boundary is tested against a stubbed clock and
-a stubbed `fetch`, never against the real Supabase project. Stage 10 remains its first real
-verification. Was a **launch blocker**. Found 2026-09-24 after
+a stubbed `fetch`, never against the real Supabase project. **It is no longer blocked, though** — the
+dev server starts, contrary to what the `## Comments` below said for eight days; see ticket 37 and
+the 2026-10-03 entry. What it now needs is someone to sign in and wait out an hour, not a working
+environment. Was a **launch blocker**. Found 2026-09-24 after
 it blocked the stage 10 test checkout three times running and consumed most of an evening's
 debugging. See the `## Comments` section at the bottom for what was built and what is still unproven.
 
@@ -151,3 +153,27 @@ tests cover the logic, including the dropped `await` that would restore the whol
 other test green.
 
 Suite: 217 passed, 2 skipped, 0 failed, up 27. `tsc --noEmit` and `vite build` clean.
+
+### 2026-10-03 — the dev server starts; see ticket 37
+
+The entry above says the browser round trip is unproven because *"the local dev server never binds on
+this machine — no output, no port, before the change as after"*. **That is wrong now**, measured at
+`7341316`. Whether it was wrong when written is not established and is not claimed. **Ticket 37
+carries the readings and the three ways this gets mismeasured**, including the one case that is a
+real failure: under an automated preview harness it genuinely does not bind.
+
+**What this changes here.** Nothing about the fix, which is live and verified. One of the two
+remainders is no longer blocked: **the hour boundary can be exercised against the real Supabase
+project in a browser.** The stubbed-clock tests stay; they are not the same evidence, and no round
+trip has been run yet.
+
+**What it does not change.** The three `onError` handlers are still unpinned, for the reason this
+ticket already gives — they need a renderer, and widening `vitest.config.ts` was declined. A local
+server does not help with that.
+
+**No code was written for this entry.** The fix was verified intact rather than assumed:
+`shared/supabaseSession.ts` present, with `decideSessionUse`, `sessionToStore`,
+`getFreshSupabaseAccessToken`, `hasSupabaseSession` and `classifyRequestError`, and 27 tests passing
+across the three session test files. `redirectToLoginIfUnauthorized` no longer exists, which is not a
+regression — it is the symbol this ticket's first attempt misused, replaced by `classifyRequestError`
+as the entry above describes.

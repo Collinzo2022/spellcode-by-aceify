@@ -470,7 +470,18 @@ and the implementation notes; what matters here:
 - **The workaround is no longer needed** but still works:
   `localStorage.removeItem('spellcode-supabase-session')`.
 
-## The local dev server does not start on this machine
+## ~~The local dev server does not start on this machine~~ — it does
+
+**Withdrawn 2026-10-03. See ticket 37**, which has the readings, the three ways this gets
+mismeasured, and the one case that really does fail. The short version for anyone who needs a browser
+now: **`npm run dev` from a shell with stdout redirected to a file, then poll
+`http://localhost:3000/`** — not the `127.0.0.1` literal — and wait out `Re-optimizing dependencies`.
+It serves `HTTP 200` and renders the app. Under an automated preview harness it does not bind, and
+that part is real.
+
+The rest of this section is kept as written, because the reasoning that produced a wrong "cannot" is
+the thing worth not repeating. Its conclusion — "you cannot verify in a browser locally" — is
+retired under "Do not reinstate these".
 
 Recorded so nobody spends an evening on it twice. `npm run dev` (`tsx watch server/_core/index.ts`)
 prints **nothing** beyond npm's own two notices, never binds port 3000, and `curl` gets connection
@@ -814,8 +825,10 @@ a reset is off the table.
    payment path known to work. **Ticket 30 adds a third row state it must handle** — a sweep calling
    `GET /transaction/verify/{reference}` gets `transaction_not_found` for a reference charged on an
    integration the application cannot see, which is neither "paid" nor "abandoned".
-7. **A ticket for the dev server that never binds.** Not blocking launch, but it is now the reason no
-   client-side change can be checked in a browser locally.
+7. **Ticket 37, written 2026-10-03.** The premise was mostly wrong: the dev server starts, so
+   client-side changes *can* be checked in a browser locally. What remains is real but small — the
+   working invocation belongs in `AGENTS.md`, and the preview-harness launch genuinely fails and is
+   undiagnosed.
 8. **The two Forge follow-ups**, still not written as tickets:
    - **F1**, the user's: move guided-project publishing and certificates to Supabase Storage.
    - **F2**, the user's **backend engineer's**: move the AI tutor to a direct LLM provider, and
@@ -959,6 +972,9 @@ Each was surfaced to the user and none overruled. Do not silently reverse them.
 - ~~Ticket 27 needs `getSupabaseAccessToken` to return null past expiry.~~ The function is gone; the
   behaviour is `decideSessionUse`'s.
 - ~~Stage 8 is closed by Paystack's "Send test webhook" button.~~ No such button exists.
+- ~~You cannot verify a client-side change in a browser locally.~~ **Carried for eight days and
+  cited three times as a reason work went unproved.** `npm run dev` serves and the app renders;
+  ticket 37 has the readings. Only the preview-harness launch really fails.
 - ~~The owner's account is locked out of a new checkout by a `pending` subscription.~~ Those rows
   are `cancelled` as of 2026-09-28, and since ticket 34 `initializeCheckout` no longer counts
   `pending` as access at all.
@@ -995,8 +1011,10 @@ Each was surfaced to the user and none overruled. Do not silently reverse them.
   does not show untracked ones.
 - **`domain-modeling`** — before editing `CONTEXT.md` or writing an ADR.
 - **`grill-with-docs`** — for F1, which is an idea rather than a procedure.
-- **`diagnosing-bugs`** — for the dev server that never binds, if that becomes a ticket. It is the
-  shape that skill is for: no output, no error, and no obvious first glance.
+- **`diagnosing-bugs`** — now only for ticket 37's remainder, the preview-harness launch that stalls
+  before `createSpellCodeApp` logs anything. Narrower than it looked: "no output, no error, no
+  obvious first glance" described the *observation* for the plain `npm run dev` case, and that is
+  worth suspecting first next time.
 - **`wizard`** — for everything now outstanding, which is all operator work: the ticket 35 migration
   and secret, ticket 32's plan codes, ticket 31's key rotation, and the remaining two stages of
   `finish-switch-wizard.sh`. That list has been re-explained to an agent in three separate sessions,
