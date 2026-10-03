@@ -183,7 +183,7 @@ finish() {
 # STAGES: author this section. One stage() per step the human takes.
 # ──────────────────────────────────────────────────────────────────────────
 
-TOTAL_STAGES=9
+TOTAL_STAGES=10
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -193,15 +193,21 @@ cd "$REPO_ROOT"
 
 # ── Facts this wizard is built on ─────────────────────────────────────────
 #
-# The live Supabase project. Stages 2 and 8 both refuse to act on the wrong
-# one, in opposite directions: stage 2 must touch ONLY this, stage 8 must
-# NEVER touch it.
+# The live Supabase project. Stages 2, 8 and 9 all refuse to act on the
+# wrong one, in opposite directions: stage 2 must touch ONLY this, stages 8
+# and 9 must NEVER touch it.
 LIVE_SUPABASE_REF="jttycbhcziffiukpcwvd"
 
 # The Manus-era project (ticket 31). Still running, in an organization the
 # owner is not an admin of, so it cannot be paused. Rotating its keys is the
 # whole of the practical remedy.
 MANUS_SUPABASE_REF="mgsbipibzzwrvnseftar"
+
+# The intermediate project, paused by hand 2026-09-28 and answering 401 again
+# on 2026-10-03. Stage 9 asks the human to read its real state, because no
+# probe from outside can tell paused from running: an unauthenticated 401
+# only separates a real project from a nonexistent one.
+INTERMEDIATE_SUPABASE_REF="geewhajddtzoisumbbek"
 
 RENDER_HOST="https://spellcode-backend.onrender.com"
 SWEEP_PATH="/api/scheduled/reconcile-payments"
@@ -824,6 +830,81 @@ printf '\n'
 pause "Continue."
 
 # -- 9 ---------------------------------------------------------------------
+stage "Ticket 31: read whether the intermediate project is really paused"
+say "A reading, not an action. This stage changes nothing and asks you to"
+say "change nothing."
+printf '\n'
+say "$INTERMEDIATE_SUPABASE_REF was paused by hand on 2026-09-28. On"
+say "2026-10-03 it answered 401 again, exactly as the live project does."
+printf '\n'
+warn "Be careful what that does and does not prove."
+note "  A ref that does not exist fails DNS outright, so something is"
+note "  answering for this one. But that only separates a real project from"
+note "  a nonexistent one. It cannot tell paused from running, which is the"
+note "  actual question, so no probe from outside can settle this."
+printf '\n'
+note "  Two readings fit. Either the project was restored, or a paused"
+note "  project keeps its gateway and the 2026-09-28 reading never proved a"
+note "  pause at all. The second would mean ticket 31's method is weaker"
+note "  than it claims, which is why this reading is worth a minute."
+
+if offer_skip paused31 "the intermediate project's real state was read"; then
+  note "Skipped."
+elif [[ "$INTERMEDIATE_SUPABASE_REF" == "$LIVE_SUPABASE_REF" ]]; then
+  warn "Refusing to act: the intermediate ref matches the live ref. Someone"
+  note "  has edited this wizard wrongly, and the page below is where a"
+  note "  project gets paused. Pausing the live project would take the"
+  note "  product down."
+  SKIPPED+=("ticket 31: refused to read, intermediate ref collides with live")
+elif [[ "$INTERMEDIATE_SUPABASE_REF" == "$MANUS_SUPABASE_REF" ]]; then
+  warn "Refusing to act: the intermediate ref matches the Manus ref. These"
+  note "  are two different projects and this wizard has them confused."
+  SKIPPED+=("ticket 31: refused to read, intermediate ref collides with Manus")
+else
+  printf '\n'
+  open_url "https://supabase.com/dashboard/project/${INTERMEDIATE_SUPABASE_REF}/settings/general"
+  step "Check the ref in the URL reads ${INTERMEDIATE_SUPABASE_REF} before anything else."
+  note "  Not the project NAME. Naming has misled this effort twice, and the"
+  note "  live project is $LIVE_SUPABASE_REF."
+  printf '\n'
+  warn "This page is also where Pause project lives. Do not touch it."
+  note "  You are here to read a status, and this stage is finished the"
+  note "  moment you have. Ticket 31 has no step that pauses anything."
+  printf '\n'
+  step "Read whether the project reports paused or active."
+  printf '\n'
+  # Three outcomes, not two, and the third is the default. `confirm` is
+  # [y/N], so a bare Enter must mean "I did not read it" - never a claim
+  # about what the dashboard said. An earlier draft of this stage let Enter
+  # assert "NOT paused" into the summary, which is the one thing the stage
+  # exists to say nobody may guess.
+  if confirm "Did you get a clear reading?"; then
+    if confirm "Did it say PAUSED?"; then
+      mark_done paused31
+      warn "Then the pause held, and ticket 31's probe method is the thing"
+      note "  that is wrong: a paused project still answers 401, so the"
+      note "  2026-09-28 reading proved nothing about a pause. Say so in"
+      note "  ticket 31 - it is the more useful of the two findings, and it"
+      note "  weakens every 'paused' claim in this effort that rests on a"
+      note "  401. Nothing needs doing to the project itself."
+    else
+      mark_done paused31
+      note "Then it is running, and the pause was undone or never took."
+      note "  The probe method survives. Correct ticket 31's table and the"
+      note "  handoff's, which both still record a pause."
+      note "  Pausing it again is optional: it holds nothing anyone needs,"
+      note "  and pausing is reversible. Ticket 31's remedy is key rotation."
+    fi
+  else
+    SKIPPED+=("ticket 31: read ${INTERMEDIATE_SUPABASE_REF}'s paused/active state - not read")
+    note "Noted as unread. Neither reading is recorded, which is right:"
+    note "  ticket 31's whole point here is that this cannot be guessed."
+  fi
+fi
+printf '\n'
+pause "Continue."
+
+# -- 10 --------------------------------------------------------------------
 stage "Ticket 32: the cutover, reported and NOT performed"
 say "This stage reads state and refuses to change it. Read why before"
 say "deciding to override that."

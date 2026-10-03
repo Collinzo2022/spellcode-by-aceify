@@ -706,16 +706,21 @@ a reset is off the table.
    2026-09-28, and the remaining half is ticket 31.**
 
    **There are three Supabase projects, not two.** Every document in this effort assumed two,
-   including both wizards. Measured 2026-09-28 by unauthenticated `GET /rest/v1/`, which tells a
-   running project (`401`) from a paused one (does not resolve):
+   including both wizards. Measured 2026-09-28 by unauthenticated `GET /rest/v1/`, read at the time
+   as telling a running project (`401`) from a paused one (does not resolve) — a reading the note
+   below withdraws:
 
    | ref | | |
    |---|---|---|
    | `jttycbhcziffiukpcwvd` | running | **live production**, created 2026-09-23 |
-   | `geewhajddtzoisumbbek` | **paused 2026-09-28** | an intermediate attempt |
+   | `geewhajddtzoisumbbek` | pause **unverified** | an intermediate attempt |
    | `mgsbipibzzwrvnseftar` | **running** | the Manus-era project — **the one stage 11 means**, and it **cannot be paused**: it is in an organization the owner is not an admin of |
 
    So the pause that happened was correct but was not the stage. **Ticket 31** carries the rest.
+
+   **An unauthenticated `401` cannot tell a paused project from a running one**, so the "does not
+   resolve" test above proves less than it reads as proving — ticket 31's question 4 has the
+   re-probe and what settles it.
 
    **It holds no third-party data**, established 2026-09-28 by reading its Authentication → Users:
    ten accounts, all the owner's or the one collaborator who built the Manus version. So there is no

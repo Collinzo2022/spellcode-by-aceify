@@ -4,6 +4,9 @@
 work, and partly not the operator's to do** — the project sits in an organization the project owner
 is not an admin of.
 
+**`geewhajddtzoisumbbek`'s pause is unverified** — see question 4 and `## Comments`. The remedy is
+unchanged: key rotation on `mgsbipibzzwrvnseftar`.
+
 **There is no code defect here.** Nothing in this repository points at the project. What is open is a
 credential exposure, and it is the reason **switch stage 11 is only half done**.
 
@@ -13,7 +16,8 @@ deadline and leaves key rotation as the whole of the remedy.
 
 ## There were three projects, not two
 
-Every document in this effort — `switch-wizard.sh`, `finish-switch-wizard.sh:204-205`, the handoff —
+Every document in this effort — `switch-wizard.sh`, `finish-switch-wizard.sh`'s `LIVE_SUPABASE_REF`,
+the handoff —
 was written assuming two Supabase projects: the old one and the new one. There are three.
 
 Measured 2026-09-28 with an unauthenticated `GET /rest/v1/`, which distinguishes a running project
@@ -22,8 +26,12 @@ Measured 2026-09-28 with an unauthenticated `GET /rest/v1/`, which distinguishes
 | ref | reachable | what it is |
 |---|---|---|
 | `jttycbhcziffiukpcwvd` | `401` — **running** | live production, created 2026-09-23 by switch stage 3 |
-| `geewhajddtzoisumbbek` | **unreachable** | an intermediate attempt. **Paused 2026-09-28** by the owner |
+| `geewhajddtzoisumbbek` | ~~**unreachable**~~ — see question 4 | an intermediate attempt. ~~**Paused 2026-09-28**~~ by the owner |
 | `mgsbipibzzwrvnseftar` | `401` — **running** | the earlier attempt, linked to Manus. **Cannot be paused** |
+
+Row 2 is struck because the method cannot support it — see question 4. It is kept as measured rather
+than deleted, so the reading that was taken is still visible next to the reason it proves less than
+it looked like proving.
 
 The live one was confirmed post-alignment by reading it, not by trusting the ref: `plans.paid_features`
 returns `42703`, its three plan rows match ticket 30's readings, and the owner separately confirmed in
@@ -32,9 +40,10 @@ the dashboard that `.env`'s anon and service-role keys both belong to it.
 ## Why stage 11 is not closed by the pause that happened
 
 Stage 11 says "pause the old Supabase project", singular, and
-`finish-switch-wizard.sh:438` guards it with "the LIVE project is `jttycbhcziffiukpcwvd`, do not pause
-that one" — a guard that is correct and insufficient, because it assumes the only other project is the
-one to pause.
+`finish-switch-wizard.sh`'s stage 8 guards it with `warn "The LIVE project is $LIVE_SUPABASE_REF. Do
+not pause that one."` — a guard that is correct and insufficient, because it assumes the only other
+project is the one to pause. Its next line, `step "Pick the older project, NOT $LIVE_SUPABASE_REF."`,
+is the ambiguity itself: "the older project" names neither of the two it could mean.
 
 `geewhajddtzoisumbbek` was paused and that was right. But **the pre-alignment project is
 `mgsbipibzzwrvnseftar`**, and it is the one still running. So the stage's intent — the old data is no
@@ -98,6 +107,15 @@ repository is — `.env` holds only `jttycbhcziffiukpcwvd`.
    the project or the organization? Each is a different mitigation and at least one is likely available.
 3. **Who administers that organization?** Manus itself, or an account created on the owner's behalf
    during the Manus build. If the latter, recovering it may only need a password reset.
+4. **Is `geewhajddtzoisumbbek` actually paused, and does this ticket's probe prove a pause at all?**
+   One question, not two, because the same reading answers both. It answered `401` on 2026-10-03,
+   indistinguishable from the live project. **An unauthenticated `401` cannot tell paused from
+   running** — it only separates a real project from a nonexistent one — so the method this ticket
+   opens with proves less than its table claims. Either the project was restored, or a paused
+   project keeps its gateway and **no pause in this effort was ever verified by probe**. The second
+   is the more consequential and the cheaper to check: read Settings → General in the dashboard.
+   `operator-remainder.sh`'s stage "Ticket 31: read whether the intermediate project is really
+   paused" walks it, and changes nothing either way.
 
 ## What to do
 
@@ -144,3 +162,54 @@ document describing the work had confidently assumed a smaller number.
 
 No secrets appear in this file. The three project refs are public identifiers, present in any URL the
 projects serve; no key was read or recorded.
+
+## Comments
+
+### 2026-10-03 — the probe cannot prove a pause, which is worse than the pause having lapsed
+
+Re-ran this ticket's own measurement. **`geewhajddtzoisumbbek` answers `401` again**, identically to
+the live project.
+
+| ref | DNS | `GET /rest/v1/` | 2026-09-28 | 2026-10-03 |
+|---|---|---|---|---|
+| `jttycbhcziffiukpcwvd` | `104.18.38.10` | `401` | running | running |
+| `geewhajddtzoisumbbek` | `104.18.38.10` | `401` | unreachable | **answering** |
+| `mgsbipibzzwrvnseftar` | `104.18.38.10` | `401` | running | running |
+| `zzzzzzzzzzzzzzzzzzzz` (control) | **no DNS** | no response | — | — |
+
+**The finding is about the method, not the project.** The control establishes one thing only: a ref
+that does not exist fails DNS outright (`getaddrinfo failed`), so DNS is published per project and a
+`401` means a real gateway answered. **It says nothing about paused versus running**, which is the
+question this ticket's table answers with it. So the honest reading of row 2 is not "it was
+restored" but "this measurement never distinguished the two states and still does not".
+
+That is why question 4 is phrased as one question. Both candidate explanations — restored, or
+paused-projects-answer-anyway — are live, and the second impeaches every "paused" claim in this
+effort that rests on a `401`. The dashboard settles it in one look and the wizard stage walks there.
+
+Worth noting the IP carries no information either way: all three refs resolve to the same Cloudflare
+address, so a shared edge is expected and comparing IPs would prove nothing.
+
+**What does not change.** `mgsbipibzzwrvnseftar` is the project stage 11 means, it is still running,
+and **key rotation is still the whole of the practical remedy**. No step in "What to do" is affected,
+and the status stays `ready-for-human`: every remaining action is a dashboard action, two of them
+possibly needing rights the owner lacks.
+
+**No code was written, and none was needed.** This ticket opens with "there is no code defect here"
+and that still holds; `git grep` finds no tracked file pointing at either non-live ref except these
+documents and `operator-remainder.sh`'s `MANUS_SUPABASE_REF` and `INTERMEDIATE_SUPABASE_REF`, both of
+which exist in order to refuse to act on the wrong project.
+
+**`finish-switch-wizard.sh` was deliberately left alone, so step 4 stays open.** Its stage 8 does
+carry the defect this ticket describes — its `step` says to pick "the older project", which is
+ambiguous between the two non-live refs and is how the wrong one came to be paused — but the script
+must not be re-run, since its stage 7 cannot succeed and does not notice. Correcting a script nobody
+should execute is not worth the diff, and step 4's condition is "if it is ever re-authored". Its
+`LIVE_SUPABASE_REF` and its `warn "The LIVE project is …"` are the two symbols to fix if that day
+comes. The wizard that *is* meant to run carries the reading instead, as its own stage, which
+refuses if the intermediate ref ever collides with either of the others.
+
+**The pattern section gains a third reading.** It already says *establish how many copies exist
+before acting on one*. This adds: **know what your instrument measures before trusting what it
+says about state.** The count was wrong first; now the thing the count was built on turns out not to
+measure what it was read as measuring.
