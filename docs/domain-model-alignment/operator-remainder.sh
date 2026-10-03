@@ -718,12 +718,45 @@ printf '\n'
 if offer_skip checkout34 "a post-34 test checkout was completed"; then
   note "Skipped."
 else
-  warn "You need a THIRD test Learner, and this is the trap."
-  note "  Ticket 34's new guard refuses a checkout when the Learner already"
-  note "  holds a subscription in (active, past_due). The stage 10 account"
-  note "  5499b299 has an ACTIVE Full Access subscription from 2026-09-27, so"
-  note "  it will be refused - correctly. Signing in as it and seeing the"
-  note "  refusal proves the guard, not the checkout. Use a new account."
+  warn "You need a Learner the guard will let through, and this is the trap."
+  note "  Both of initializeCheckout's guards are scoped by user_id AND"
+  note "  plan_id, not by account alone: the access guard refuses a"
+  note "  subscription in (active, past_due) for THAT plan, and the in-flight"
+  note "  guard refuses a payment_transactions row at status initialized and"
+  note "  younger than abandonedCheckoutCutoff. Signing in as a Learner who"
+  note "  already holds Full Access and seeing the refusal proves the guard,"
+  note "  not the checkout."
+  printf '\n'
+  # Read, not quoted. An earlier draft of this stage pasted a dated reading of
+  # this table into the script ("only three subscriptions exist", one named
+  # account id), which is the one thing this file's resume doctrine forbids:
+  # prefer a probe to the prose, because a probe cannot go stale. Running this
+  # very stage falsifies such a reading.
+  say "Who is barred right now - read from the live database, not quoted:"
+  printf '\n'
+  GUARD_READ_OK=1
+  postgrest "subscriptions?select=user_id,plan_id,status,created_at&status=in.(active,past_due)&order=created_at.desc&limit=10" \
+    || { warn "could not read subscriptions"; GUARD_READ_OK=0; }
+  printf '\n'
+  if (( GUARD_READ_OK == 1 )); then
+    note "  Each user_id above is refused for its own plan_id and no other."
+    note "  A Learner absent from that list gets through - including one who"
+    note "  abandoned a checkout, since an abandoned row is neither active nor"
+    note "  initialized and so matches neither guard. A fresh signup always"
+    note "  gets through, and is the only account guaranteed to."
+  else
+    note "  Unread, so assume nothing: sign up a NEW test Learner. That is the"
+    note "  one account that passes the guard without needing to know who"
+    note "  already holds what."
+  fi
+  printf '\n'
+  warn "Read ADR 0004 before you pay, as ticket 34 requires."
+  note "  Production runs in LIVE mode, so a test card is refused there unless"
+  note "  the environment is moved back to test codes - and whichever way you"
+  note "  go, a completed test checkout writes an active Subscription that no"
+  note "  money paid for. Deliberate once; never a habit."
+  step "Read docs/adr/0004-payment-mode-is-environment-not-domain.md."
+  pause "Press Enter once you have read it and know which mode you are in."
   printf '\n'
   say "Wake Render first. A cold start exceeds 45 seconds and Paystack's"
   say "webhook timeout is 30, so a sleeping instance loses the delivery."
@@ -734,7 +767,8 @@ else
   PROD_ORIGIN="${PROD_ORIGIN:-https://spellcode-by-aceify-two.vercel.app}"
   printf '\n'
   open_url "$PROD_ORIGIN/auth"
-  step "Sign up as a NEW test Learner and confirm the email."
+  step "Sign in as a Learner absent from the list above, or sign up a new one"
+  step "and confirm the email."
   step "Then go to Access and start a Full Access one-time checkout."
   printf '\n'
   say "Pay with a Paystack test card. Do not guess the number - the current"
@@ -749,15 +783,28 @@ else
   if confirm "Did the checkout complete and Full Access appear?"; then
     printf '\n'
     say "Reading the database rather than trusting the page:"
-    postgrest "payment_transactions?select=reference,status,created_at&order=created_at.desc&limit=3" || warn "could not read payment_transactions"
+    # Both column lists were wrong until 2026-10-03 and both 400'd: there is no
+    # payment_transactions.reference (it is paystack_reference) and no
+    # subscriptions.total_installments (it is installments_due). postgrest uses
+    # curl -fsS, so each failure printed one warning and moved on - and the
+    # question below then asked the operator to confirm a reading they had
+    # never seen. Verified against the live schema on 2026-10-03.
+    VERIFY_READS_OK=1
+    postgrest "payment_transactions?select=paystack_reference,status,paid_at,created_at&order=created_at.desc&limit=3" || { warn "could not read payment_transactions"; VERIFY_READS_OK=0; }
     printf '\n'
-    postgrest "subscriptions?select=status,installments_paid,total_installments,created_at&order=created_at.desc&limit=3" || warn "could not read subscriptions"
+    postgrest "subscriptions?select=status,installments_paid,installments_due,created_at&order=created_at.desc&limit=3" || { warn "could not read subscriptions"; VERIFY_READS_OK=0; }
     printf '\n'
-    say "Expect the newest payment at status success, and a subscription at"
-    say "active. Under ticket 34 the subscription is written at VERIFIED"
-    say "payment, not at checkout - so there should be no pending row at all."
+    say "Expect the newest payment at status success with a paid_at, and a"
+    say "subscription at active. Under ticket 34 the subscription is written at"
+    say "VERIFIED payment, not at checkout - so there should be no pending row."
     printf '\n'
-    if confirm "Does that match?"; then
+    if (( VERIFY_READS_OK == 0 )); then
+      SKIPPED+=("ticket 34: checkout reported complete but the database could not be read - verify by hand")
+      warn "Not asking you to confirm a reading that did not arrive."
+      note "  The checkout may well have worked. Nothing is recorded either"
+      note "  way, which is the honest outcome when the verification itself"
+      note "  failed."
+    elif confirm "Does that match?"; then
       mark_done checkout34
       printf '  %s✓ ticket 34 has its browser verification%s\n' "$GREEN" "$RESET"
     else
