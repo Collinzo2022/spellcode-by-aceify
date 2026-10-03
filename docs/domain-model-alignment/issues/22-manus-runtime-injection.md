@@ -1,6 +1,15 @@
 # 22: The Manus runtime is 99.8% of every HTML document served
 
-**Status:** done in the working tree (2026-09-24), not committed. Five of six boxes ticked; the deployed-session check is the exception and is called out below. Found while verifying the ticket-21-adjacent analytics fix
+**Status:** done and committed as `5753e04`, **pushed** — it is an ancestor of `origin/main`. Five of
+six boxes ticked; the deployed-session check is the exception and is called out below.
+
+**This line read "done in the working tree, not committed" until 2026-10-03**, nine days after
+`5753e04` landed. `docs/agents/issue-tracker.md` makes a ticket's `Status:` line the authority on
+whether it is done, so a stale one is not a cosmetic defect: it is the authority disagreeing with
+git. The commit is findable as `git log --oneline --grep 'ticket 22'`, which is the check that should
+have been run before writing a "not committed" into a file nobody re-reads.
+
+Found while verifying the ticket-21-adjacent analytics fix
 (`d3a3d0b`); deliberately not folded into it, because that was a scaffold deletion and this is a
 build-config change with an auth question attached.
 

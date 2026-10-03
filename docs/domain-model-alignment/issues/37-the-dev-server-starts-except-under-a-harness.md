@@ -1,9 +1,11 @@
 # 37: the dev server starts, except under an automated harness
 
-**Status:** open, `ready-for-agent`. Found 2026-10-03 while looking for what blocks ticket 27's
-browser proof. **Most of this is a correction rather than a defect**: three documents record a dev
-server that cannot start, and `npm run dev` starts. One part is a real failure and is still open —
-under an automated preview harness it does not bind.
+**Status:** **closed 2026-10-03**, the day it was opened. **Most of this is a correction rather than
+a defect**: three documents record a dev server that cannot start, and `npm run dev` starts. The one
+real failure — no bind under an automated preview harness — is **diagnosed and fixed**: the child
+blocks constructing `process.stdin`, and `npm run dev < NUL` removes it. See the second
+`## Comments` entry. **The preview pane now serves and renders this application**, which it has never
+done before on this project.
 
 ## What was measured, 2026-10-03, at `7341316`
 
@@ -56,7 +58,11 @@ happened on 2026-09-25.
    `Re-optimizing dependencies because vite config has changed` and takes appreciably longer to bind.
    A probe with a short timeout reads that as a hang.
 
-## The part that is a real failure and is still open
+## ~~The part that is a real failure and is still open~~ — diagnosed 2026-10-03
+
+**The cause is the child's `process.stdin`, and the remedy is one redirection.** Read the second
+`## Comments` entry for the measurements; this section is kept as the description of the symptom,
+and two of its sentences are now wrong and are struck there rather than deleted.
 
 **Under the Claude Code preview harness the server genuinely does not bind.** Reproduced twice on
 2026-10-03: the process starts, npm echoes the command, and nothing follows — not even the
@@ -105,7 +111,8 @@ reached the neighbouring conclusion about instruments one day earlier; the two b
 
 - [x] Ticket 27 and the handoff no longer assert the dev server cannot start.
 - [x] `AGENTS.md` carries the working invocation and the three mismeasurements above.
-- [ ] The harness failure is diagnosed, or recorded as deliberately not diagnosed.
+- [x] The harness failure is diagnosed, or recorded as deliberately not diagnosed. **Diagnosed**,
+      not waived: `process.stdin` in the watch child, fixed by `< NUL`, proved by mutation.
 
 ## Related
 
@@ -168,5 +175,145 @@ exists.** Reproducing it means running a preview tool against this project again
 `Done when` box 3 stays unticked —
 narrowing a cause is not diagnosing it, and this ticket's own standard is that an explicit decision
 not to diagnose is also a legitimate close.
+
+### 2026-10-03 — the child blocks on `process.stdin`, and one redirection fixes it
+
+Diagnosed at `154c94b` under `/diagnosing-bugs`. **The entry above is wrong in its first and most
+load-bearing claim**, and the correction is the reason the cause was findable.
+
+#### The loop
+
+`preview_start {name: "dev"}`, then assert on the port rather than on what the tool says:
+
+```
+netstat -ano | grep -cE ':3000\s+.*LISTENING'   →  0
+curl --max-time 2 http://localhost:3000/        →  000
+```
+
+Held at `0` and `000` for 100 seconds across ten polls, while the harness's own result read
+**"Server started successfully on port 3000"**. That disagreement is the bug in one line: **the
+harness reports the launch, not the listener.**
+
+#### ~~The stalled launcher never spawned a child at all~~ — it did
+
+The fresh specimen's full chain, read from `Win32_Process`:
+
+| PID | Process |
+|---|---|
+| 11928 | `cmd /C npm.cmd run dev` |
+| 33316 | `npm-cli.js run dev` |
+| 28056 | `cmd /c cross-env NODE_ENV=development tsx watch …` |
+| 26932 | `cross-env.js` |
+| 5436 | `cmd /c tsx "watch" "server/_core/index.ts"` |
+| 28728 | `tsx/dist/cli.mjs watch server/_core/index.ts` ← the supervisor |
+| **31248** | **`node --require …/tsx/dist/preflight.cjs --import …/loader.mjs server/_core/index.ts`** ← **the child** |
+
+**The child exists.** So the previous entry's three conclusions need splitting: "blocked, not
+spinning" holds (0 CPU-seconds across 8 seconds, measured twice), "not port contention" holds, and
+**"the failure is upstream of this repo's code because nothing was ever spawned" does not.** It was
+inferred from one `ParentProcessId` reading of a 55-minute-old process, and the mechanism it proposed
+— a file watcher blocking before the first fork — was wrong. **A narrowing that names a mechanism is
+a hypothesis, and this one was recorded in a table.**
+
+The child had **2.3 CPU-seconds and a 111MB working set** before stopping dead, so it had loaded a
+great deal of this application. The old entry's "nothing in `server/` ever began to run" is wrong in
+the same way.
+
+#### Four hypotheses, three killed by probe
+
+Each probe was a `launch.json` entry, so every one ran under the **same** harness. The repo was not
+touched.
+
+| Hypothesis | Probe | Result |
+|---|---|---|
+| The harness cannot start a listener at all | a 12-line script that binds `:3000` and prints nothing first | **binds, 200** — killed |
+| A stdout write blocks before `listen()` | the same script writing 327,720 bytes to stdout first, tracing each chunk to a **file** | every write returned, then it bound — **killed** |
+| `tsx watch` is broken under the harness | `tsx watch` on that same minimal script | **binds, 200** — killed |
+| `tsx watch` + this app's module graph | `npm run dev` with a tracer injected by `NODE_OPTIONS=--require` | **stalls** |
+
+The third row is the one that matters: `npx tsx server/_core/index.ts` — the same entry file, same
+harness, **no `watch`** — bound in under 5 seconds. So `watch` is load-bearing and the app is
+load-bearing, and neither alone is enough.
+
+#### The instrument that found it
+
+A `--require` tracer writing to a **per-pid file**, never to stdout, because stdout was a suspect.
+It classifies nothing and does one thing well: it touches `process.stdout`, `process.stderr` and
+`process.stdin` **separately**, logging before and after each, then starts a 500ms heartbeat.
+
+**The heartbeat is the whole instrument.** A heartbeat that keeps ticking while nothing happens means
+the event loop is alive and something is awaiting. A heartbeat that never appears means the process is
+blocked synchronously. The app child's trace, in full, is five lines and then silence:
+
+```
+start pid=24380 ppid=23152
+argv=…\node.exe …\server\_core\index.ts
+about to touch process.stdout
+touched process.stdout isTTY=undefined
+about to touch process.stderr
+touched process.stderr isTTY=undefined
+about to touch process.stdin          ← last line ever written
+```
+
+No heartbeat, no exit, no further line. **Constructing `process.stdin` never returns.** The same
+tracer in the supervisor (`tsx/dist/cli.mjs`, pid 23152) and in `cross-env` (pid 20856) got through
+all three streams in under 60ms each and heartbeated for the rest of the run — so the handle the
+**supervisor** was given is fine and the handle it hands its **child** is not.
+
+#### The fix, proved by mutation
+
+One variable changed, nothing else — stdin redirected from `NUL`:
+
+```
+cmd /c "npm run dev < NUL"
+```
+
+Under the identical harness, the same chain, the same app:
+
+```
+t=6s   listeners=2   http=200
+t=48s  listeners=2   http=200
+```
+
+and the harness log now carries what the shell always did:
+
+```
+[OAuth] Initialized with baseURL:
+Server running on http://localhost:3000/
+```
+
+`/api/version` answered `{"commit":null,…,"startedAt":"2026-10-03T14:42:48.191Z"}`, `/` served 879
+bytes of `text/html`, and **the application rendered in the preview pane** — banner, primary
+navigation, the hero, `[vite] connected` in the console and no application error. That is the first
+time a preview tool has rendered this project.
+
+**`.claude/launch.json`'s `dev` entry now carries the redirection**, so `preview_start {name: "dev"}`
+works as an agent would expect it to. The old spawn is kept beside it as `dev-inherited-stdin`, which
+is the reproducer. That file is **gitignored** (`.gitignore:118`), so **this fix does not travel** —
+which is why the mechanism is written out here and in `AGENTS.md` rather than only configured.
+
+#### What is still not established, stated precisely
+
+- **Which line touches `process.stdin`.** Nothing in `server/` needs it. The untraced child reached
+  2.3 CPU-seconds first, so the touch happens somewhere in the module graph — vite, a dependency of
+  it, or Node's own bootstrap — and the tracer front-loaded the same block to the first line instead
+  of hunting it. `< NUL` makes the question moot; a `tsx` upgrade could make it live again.
+- **Why that handle blocks.** `tsx watch` spawns its child with stdio of its own making
+  (`dist/client-*.cjs` also opens a named pipe at `getPipePath(process.ppid)` for dependency
+  reporting). Whether the blocking handle is that pipe, or the inherited harness stdin passed through
+  six intermediate processes, is not measured. The mutation proof says stdin is load-bearing; it does
+  not say which stdin.
+- **Whether this is tsx's bug or the harness's.** Both are plausible and neither is established. It
+  is reportable upstream as "tsx 4.20.6 watch child blocks on `process.stdin` when stdin is a
+  non-draining pipe" **only after** someone reproduces it without this application.
+
+#### No regression test exists, and that is the finding
+
+There is no seam. The failure needs a preview harness spawning a process tree six deep; `vitest`
+covers `server/**` only, and a test that spawned `tsx watch` would be asserting on the harness's
+stdio, which it cannot create. **Per `/diagnosing-bugs`, an absent seam is itself the result**: this
+bug is locked down by a `launch.json` entry and two paragraphs, not by a test, and it can regress
+silently on a `tsx` upgrade. The cheap detector is the loop at the top of this entry — one
+`preview_start`, one `netstat`.
 
 No secrets appear in this file.

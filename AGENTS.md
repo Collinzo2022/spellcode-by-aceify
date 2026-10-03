@@ -39,11 +39,32 @@ Three ways to measure this wrongly, two of them demonstrated during the investig
 3. **Giving up during dependency optimization.** A probe with a short timeout reads
    `Re-optimizing dependencies` as a hang.
 
-**Preview harnesses report success while nothing is listening.** Under `preview_start` the server
-genuinely does not bind: `tsx watch` blocks before forking its child, so nothing in `server/` ever
-runs and no port appears. The cause is undiagnosed and ticket 37 carries the measurements. Use the
-shell invocation above rather than a preview tool, and do not conclude from a preview tool that the
-server is broken.
+## Running the dev server under a preview harness
+
+**A preview harness needs stdin redirected, or the server never binds.** The launcher must be
+
+```
+cmd /c "npm run dev < NUL"
+```
+
+not `npm run dev`. `.claude/launch.json`'s `dev` entry carries that, so `preview_start {name: "dev"}`
+serves and the application renders in the pane. **That file is gitignored, so this does not travel** —
+on a fresh clone, fix the entry before concluding anything about the server.
+
+Why: `tsx watch` hands its child a stdin handle that, under the harness, **blocks forever the first
+time anything constructs `process.stdin`**. The child starts, loads most of the application, and
+stops dead with no output, no port and no error. `< NUL` is the whole fix. Ticket 37's second
+`## Comments` entry has the trace, the four hypotheses and the mutation proof.
+
+**Two things this costs you if you forget it.** A harness reports **"Server started successfully"**
+while nothing is listening — so **assert on the port, never on the launcher's own result**:
+
+```
+netstat -ano | grep -cE ':3000\s+.*LISTENING'
+```
+
+And the failure looks exactly like the "cannot start" this repo wrongly believed for eight days. **No
+output and no port is not evidence the server is broken.**
 
 ## Replay-order SQL
 

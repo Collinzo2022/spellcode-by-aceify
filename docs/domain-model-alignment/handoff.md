@@ -12,7 +12,11 @@ re-measured the same day, having gone stale exactly as the "Verified state" self
 briefly false and holds again. **Revised 2026-10-03**: ticket 36's fix is confirmed running in
 production, and the confirmation came from a route rather than a dashboard — see "Deployment
 confirmed by the running process", where **ticket 32's engineering half (`0c28331`) is confirmed
-live too**, and where the same route established that Render auto-deploys unattended. Repo:
+live too**, and where the same route established that Render auto-deploys unattended. **Revised
+again 2026-10-03**: "Verified state" was re-measured at `154c94b` after its own self-test came back
+red for the second time in three days, ticket 30 is corrected from done to open, ticket 22's
+`Status:` line is corrected from uncommitted to pushed, and **ticket 37 is closed — the
+preview-harness stall is diagnosed, and a preview tool now renders this application**. Repo:
 `C:\Users\aefue\Desktop\Projects\Spellcode\spellcode-by-aceify`.
 
 **Moved 2026-09-25 from `.scratch/domain-model-alignment/` to `docs/domain-model-alignment/`, and
@@ -22,8 +26,17 @@ repo access, and edits to them belong in commits like any other file.** Two cons
 carrying: the backend engineer working on F2 can now read these directly, and a deleted ticket is
 recoverable from history rather than gone.
 
-**The effort is over as a build.** Tickets 01–28, **30**, and **33, 34, 35 and 36** are done; **ticket 29
+**The effort is over as a build.** Tickets 01–28 and **33, 34, 35 and 36** are done; **ticket 29
 was grilled and split on 2026-09-28** and is their parent, not work in itself.
+
+**~~Ticket 30 is done.~~ Corrected 2026-10-03: its `Status:` line reads `open, ready-for-human`, and
+that is the authority** (`docs/agents/issue-tracker.md`). What closed on 2026-09-28 was the **money**
+— ₦120,000 of test currency, a no-op — and this sentence read that as the ticket. Three of its five
+numbered actions are open and two of them are launch-adjacent: name the two Paystack businesses in
+the file, establish when `PAYSTACK_SECRET_KEY` changed and whether anything else in `.env` moved with
+it, and confirm the business with the `963cdeab` test **before** touching a live-mode setting. The
+ticket says as much in its own second paragraph: "What remains open is the operator hazard and an
+unrecorded key swap, which are the parts that threaten launch."
 
 **Amended 2026-10-01: ticket 36 was open engineering work for about two hours, and is closed.** The
 sentence that stood here — *"nothing on this effort is waiting on an engineer"* — was true for about
@@ -41,11 +54,14 @@ stage 7, below. The guard's cutoff, its state filter and the sweep's death path 
 and `CONTEXT.md` now defines **Checkout Attempt**, the concept three mechanisms had been acting on
 without a word for it. See `issues/36-…`.
 
-**Open: 31 and 32, both operator work, plus the two operator steps ticket 35 left behind.**
+**Open: 30, 31 and 32, all three operator work. Nothing is waiting on an engineer.**
 **31 the
 owner cannot currently complete**, because the project it concerns is in an organization they do not
 administer; **32 is a cutover hazard**, its design settled by ADR 0004 and its remainder operator
-work; **35's sweep is deployed, switched on and proved against production on 2026-10-01** — the
+work; **30 is an operator hazard and an unrecorded key swap**, see the correction above;
+**37 closed 2026-10-03** — it was the last `ready-for-agent` item, and the preview-harness launch it
+carried is diagnosed and fixed rather than waived;
+**35's sweep is deployed, switched on and proved against production on 2026-10-01** — the
 migration is run, both secrets are set, and a GitHub Actions run completed `success`. **Ticket 35 is
 closed in full.**
 
@@ -476,8 +492,15 @@ and the implementation notes; what matters here:
 mismeasured, and the one case that really does fail. The short version for anyone who needs a browser
 now: **`npm run dev` from a shell with stdout redirected to a file, then poll
 `http://localhost:3000/`** — not the `127.0.0.1` literal — and wait out `Re-optimizing dependencies`.
-It serves `HTTP 200` and renders the app. Under an automated preview harness it does not bind, and
-that part is real.
+It serves `HTTP 200` and renders the app.
+
+**The preview-harness failure is diagnosed and fixed, later the same day.** The watch child blocks
+forever constructing `process.stdin`, so the launcher needs `cmd /c "npm run dev < NUL"`;
+`.claude/launch.json`'s `dev` entry now carries it and the application **renders in the preview
+pane**, which it never had before on this project. `AGENTS.md` has the operational version and
+ticket 37's second `## Comments` entry has the trace and the mutation proof. Two cautions survive the
+fix: that `launch.json` is gitignored, so the fix does not travel to a fresh clone, and **a preview
+harness reports "Server started successfully" while nothing is listening** — assert on the port.
 
 The rest of this section is kept as written, because the reasoning that produced a wrong "cannot" is
 the thing worth not repeating. Its conclusion — "you cannot verify in a browser locally" — is
@@ -599,22 +622,36 @@ records why a route diagnosing misconfiguration must not require configuration i
 rather than an oversight and is reversible: moving it behind `SCHEDULED_TASKS_SECRET` costs one
 line and the ability to read it when the secret is the thing that is wrong.
 
-## Verified state, 2026-10-01
+## Verified state, 2026-10-03
 
-**Re-measured 2026-10-01 at `e471f98`**, because the self-test below had gone red: the reconciliation
-work added 1,112 lines across 11 files in `server/` and `client/`, so every figure in the previous
-revision of this section described code that no longer existed. The section worked as designed — it
-said to re-run rather than to trust — and this is that re-run.
+**Re-measured 2026-10-03 at `154c94b`**, because the self-test below had gone red **for the second
+time in three days**: tickets 32 and 36 and the `/api/version` route added 536 lines across 6 files
+in `server/`, so every figure in the previous revision of this section described code that no longer
+existed. The section worked as designed — it said to re-run rather than to trust — and this is that
+re-run. **It has now gone stale twice without anyone noticing until they were asked to read it**,
+which is an argument for re-running the one-line command below before quoting any number here, not
+for writing the numbers more carefully.
 
-- **Suite: 264 passed, 2 skipped, 0 failed, of 266, across 37 files.** Up from 217 of 219 across 34
-  at `703e1cf`; the three new files and 47 new tests are tickets 33, 34 and 35. The two skips are
+- **Suite: 286 passed, 2 skipped, 0 failed, of 288, across 38 files.** Up from 264 of 266 across 37
+  at `e471f98`, and from 217 of 219 across 34 at `703e1cf`; the one new file
+  (`server/build-identity.test.ts`) and 22 new tests are tickets 32 and 36 and the `/api/version`
+  route. The two skips are
   unchanged — the credential-gated tests in `server/external-config.test.ts`, each printing its
   reason (`SUPABASE_URL, SUPABASE_ANON_KEY not set`, `PAYSTACK_SECRET_KEY not set`). Any other skip,
   or any failure, is new.
-- `npx tsc --noEmit` clean. `npx vite build` clean, in 1m 48s.
-- **The last commit that changed code is `e471f98`** (ticket 35), which is where the three figures
-  above were measured, and it **is** the tip as this is written. Do not read that as licence to
-  assume it still is.
+- `npx tsc --noEmit` clean. `npx vite build` clean, in 59.9s.
+- **`client/` and `shared/` have not changed since `e471f98`**, so every frontend claim in
+  "Deployment confirmed" still describes what production serves; only `server/` has moved. The local
+  build above reproduced `index-lfvD14Np.js`, the same name the 2026-10-01 local build produced,
+  which is the demonstration rather than the assertion. (Still never compare that hash with a CI
+  one — see Working conventions.)
+- **The last commit that changed code is `0c28331`** (ticket 32), and it is **not** the tip: the
+  three commits after it touch `AGENTS.md`, this file, three tickets and `operator-remainder.sh`.
+  The figures above were measured at the tip, `154c94b`, with a clean working tree.
+
+  **This file has twice said "everything after the code tip is documentation" and been wrong within
+  days**, so read the sentence above as a reading taken on 2026-10-03, not as a standing property.
+  The command below is how to retake it.
 
   **Do not treat the line above as this section's answer to "what is HEAD?".** It records where the
   figures were measured, which is a fact about the past and cannot rot; whether that commit is still
@@ -631,16 +668,19 @@ said to re-run rather than to trust — and this is that re-run.
   the figures above have gone stale — i.e. whether code has landed since they were taken:
 
   ```bash
-  git diff --stat e471f98..HEAD -- server client shared
+  git diff --stat 154c94b..HEAD -- server client shared
   ```
 
   Empty output means the suite, `tsc` and `vite build` results above still hold. Any output means
   re-run them before trusting this section. **Update the SHA in that command whenever you re-measure**,
   or it silently starts comparing against the wrong baseline — it named `703e1cf` for three days after
-  that stopped being where the figures were taken.
-- **`e471f98` is pushed and deployed**, confirmed on both hosts by probe ("Deployment confirmed").
-  `18b4bd4`, `285bdf1` and `703e1cf` are its ancestors and were each confirmed the same way in turn.
-  Nothing is unpushed and nothing is awaiting a rebuild.
+  that stopped being where the figures were taken, then `e471f98` for two days after that, which is
+  how this section came to be re-measured twice in three days rather than once.
+- **`0c28331` is pushed and deployed**, confirmed by `/api/version` read 3 rather than by a bundle
+  diff ("Deployment confirmed by the running process"). `78e321f`, `0fddab3`, `e471f98`, `285bdf1`
+  and `703e1cf` are its ancestors and were each confirmed in turn. `HEAD` is `154c94b`, `git status`
+  is clean and `git ls-remote origin main` matches, so nothing is unpushed; nothing since `0c28331`
+  needs a rebuild, because nothing since it is code.
 - The merged local branch `ticket/14-replay-path-runnable` still exists, as do
   `fix/domain-model-alignment` and `claude/clever-roentgen-440fc0` (a worktree under `.claude/`).
 
@@ -825,11 +865,22 @@ a reset is off the table.
    payment path known to work. **Ticket 30 adds a third row state it must handle** — a sweep calling
    `GET /transaction/verify/{reference}` gets `transaction_not_found` for a reference charged on an
    integration the application cannot see, which is neither "paid" nor "abandoned".
-7. **Ticket 37, written 2026-10-03.** The premise was mostly wrong: the dev server starts, so
-   client-side changes *can* be checked in a browser locally. What remains is real but small — the
-   working invocation belongs in `AGENTS.md`, and the preview-harness launch genuinely fails and is
-   undiagnosed.
-8. **The two Forge follow-ups**, still not written as tickets:
+7. ~~**Ticket 37, written 2026-10-03.**~~ **Closed the same day, all three boxes.** The premise was
+   mostly wrong: the dev server starts, so client-side changes *can* be checked in a browser locally.
+   The working invocation is in `AGENTS.md` (`154c94b`), and the preview-harness launch is
+   **diagnosed, not waived** — the watch child blocks constructing `process.stdin`, and
+   `npm run dev < NUL` fixes it, proved by mutation under the same harness. **The application now
+   renders in the preview pane.** So **nothing on this effort is waiting on an engineer** — a
+   sentence this file has had to retract twice, which is why it is worth re-reading item 8 and the
+   three open operator tickets before believing the effort is idle.
+8. **Ticket 30's three open actions**, added to this list 2026-10-03, having been missing from it
+   since 2026-09-28 because the top of this file called the ticket done. Listed here rather than
+   higher up because two of the three are cheap recording; the third is not. **It gates the
+   live-money test** in "The launch checklist" above: name the two Paystack businesses in the ticket
+   using the `963cdeab` fingerprint, establish when `PAYSTACK_SECRET_KEY` changed and whether
+   anything else in `.env` moved with it, and confirm the business before touching any live-mode
+   setting. A key that can move between businesses unrecorded is the hazard, not the ₦120,000.
+9. **The two Forge follow-ups**, still not written as tickets:
    - **F1**, the user's: move guided-project publishing and certificates to Supabase Storage.
    - **F2**, the user's **backend engineer's**: move the AI tutor to a direct LLM provider, and
      choose the provider. F2's standalone brief lives in the sprint doc's Phase 4:
@@ -974,7 +1025,16 @@ Each was surfaced to the user and none overruled. Do not silently reverse them.
 - ~~Stage 8 is closed by Paystack's "Send test webhook" button.~~ No such button exists.
 - ~~You cannot verify a client-side change in a browser locally.~~ **Carried for eight days and
   cited three times as a reason work went unproved.** `npm run dev` serves and the app renders;
-  ticket 37 has the readings. Only the preview-harness launch really fails.
+  ticket 37 has the readings. ~~Only the preview-harness launch really fails.~~ **That is fixed too,
+  2026-10-03**: the launcher needs `npm run dev < NUL`, and a preview tool renders the app.
+- ~~A preview tool reporting "Server started successfully" means the server started.~~ **It reports
+  the launch, not the listener**, and it said so for 100 seconds while nothing was bound. Assert on
+  the port.
+- ~~Under the harness `tsx watch` never spawns a child, so nothing in `server/` runs.~~ **Written
+  into a table on 2026-10-03 and falsified the same day.** The child exists, and it had burned 2.3
+  CPU-seconds and 111MB of this application before blocking on `process.stdin`. It was inferred from
+  one process reading; the probe that killed it cost ten minutes. **A narrowing that names a
+  mechanism is a hypothesis.**
 - ~~The owner's account is locked out of a new checkout by a `pending` subscription.~~ Those rows
   are `cancelled` as of 2026-09-28, and since ticket 34 `initializeCheckout` no longer counts
   `pending` as access at all.
@@ -1011,10 +1071,16 @@ Each was surfaced to the user and none overruled. Do not silently reverse them.
   does not show untracked ones.
 - **`domain-modeling`** — before editing `CONTEXT.md` or writing an ADR.
 - **`grill-with-docs`** — for F1, which is an idea rather than a procedure.
-- **`diagnosing-bugs`** — now only for ticket 37's remainder, the preview-harness launch that stalls
-  before `createSpellCodeApp` logs anything. Narrower than it looked: "no output, no error, no
-  obvious first glance" described the *observation* for the plain `npm run dev` case, and that is
-  worth suspecting first next time.
+- ~~**`diagnosing-bugs`** — now only for ticket 37's remainder.~~ **Spent, and it worked.** The
+  preview-harness stall was diagnosed on 2026-10-03 at `process.stdin` in the `tsx watch` child.
+  Two things from that run are worth carrying to the next bug here:
+  **the loop beat the reading.** Four `launch.json` probe entries, each running under the *same*
+  harness, killed three hypotheses in ten minutes without touching the repository — and one of them
+  killed a mechanism this ticket had already written into a table ("the launcher never spawned a
+  child"), which was inferred from a single process reading rather than probed.
+  And **a per-pid file tracer with a heartbeat** is the instrument for anything that stalls with no
+  output: stdout was a suspect, so the trace could not go there, and a heartbeat that never appears
+  distinguishes a synchronous block from an idle event loop in one line.
 - **`wizard`** — for everything now outstanding, which is all operator work: the ticket 35 migration
   and secret, ticket 32's plan codes, ticket 31's key rotation, and the remaining two stages of
   `finish-switch-wizard.sh`. That list has been re-explained to an agent in three separate sessions,
