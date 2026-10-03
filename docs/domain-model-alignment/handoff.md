@@ -9,7 +9,9 @@ is deployed, switched on, and proved". The verification figures and the deployme
 re-measured the same day, having gone stale exactly as the "Verified state" self-test predicted.
 **Later the same day** the sweep was switched on and run against production, which **opened ticket
 36**, and ticket 36 was then built and closed — so the claim that nothing waits on an engineer was
-briefly false and holds again. Repo:
+briefly false and holds again. **Revised 2026-10-03**: ticket 36's fix is confirmed running in
+production, and the confirmation came from a route rather than a dashboard — see "Deployment
+confirmed by the running process". Repo:
 `C:\Users\aefue\Desktop\Projects\Spellcode\spellcode-by-aceify`.
 
 **Moved 2026-09-25 from `.scratch/domain-model-alignment/` to `docs/domain-model-alignment/`, and
@@ -31,7 +33,9 @@ was ticket 34's lockout at a shorter duration — the remainder it left behind, 
 
 `initializeCheckout` now hands the Learner back the Attempt they already have, redirecting to the
 `authorization_url` it persists at initialization, and an Attempt with no such URL refuses with the
-remaining wait named. **Nothing was resumed in a browser**, so the first real exercise of this is
+remaining wait named. **Confirmed deployed 2026-10-03** — see "Deployment confirmed by the running
+process" — but **nothing has been resumed in a browser**, which is a different claim: the code is
+what production is running, and no Learner has yet walked the path. The first real exercise of it is
 stage 7, below. The guard's cutoff, its state filter and the sweep's death path are all untouched,
 and `CONTEXT.md` now defines **Checkout Attempt**, the concept three mechanisms had been acting on
 without a word for it. See `issues/36-…`.
@@ -519,6 +523,43 @@ regressed by anything since.
 **Ticket 26 was unaffected by that deployment and stayed open**, the stale project still serving its
 pre-fix shell and still answering the API path with HTML. **It is closed as of 2026-09-28** — see
 "The production address changed".
+
+## Deployment confirmed by the running process, 2026-10-03
+
+**Ticket 36 is live.** Read from production, not inferred:
+
+```
+curl -s https://spellcode-by-aceify-two.vercel.app/api/version
+{"commit":"0fddab3f55f72a45973be8bffe3b23cf728038c0","branch":"main",
+ "repo":"Collinzo2022/spellcode-by-aceify","service":"spellcode-backend",
+ "startedAt":"2026-10-03T03:09:30.072Z"}
+```
+
+`commit` equals local `HEAD`, so `0fddab3` is deployed and **`78e321f` with it** — ticket 36's fix is
+an ancestor of the commit the process reports, which is a stronger statement than any bundle hash.
+`repo` reads `Collinzo2022/…`, which **rules out the wrong-org fault directly** rather than by the
+Vercel↔Render hash agreement the section above had to use; that older probe could only say the two
+hosts agreed, never which repository they agreed about.
+
+**This is the first deployment on this project confirmed without a dashboard or a bundle diff**, and
+it replaces both for the question "is production running my commit". The bundle table above is kept
+as the record of how that question used to be answered — a searched-for string adjacency — not as the
+method to repeat.
+
+**What it still cannot tell you.** `startedAt` is process start, not deploy time, and on a free
+instance that sleeps when idle the two differ routinely; a restart will move it with no deploy behind
+it. And the route reports what the *backend* is running. The frontend is a separate build, so a
+client-side change is still a bundle question.
+
+**The `/api/version` probe was answered on its first real read, which is also the first thing it
+proved.** It was written in `0fddab3` precisely because the question it answers was unanswerable from
+a terminal, and the route's own deploy was the first instance of that question.
+
+Unauthenticated, deliberately — see `server/buildIdentity.ts`'s `registerBuildIdentity`, which
+records why a route diagnosing misconfiguration must not require configuration in order to speak.
+**It discloses the commit SHA, branch and repository slug of a private repo**, which is a judgement
+rather than an oversight and is reversible: moving it behind `SCHEDULED_TASKS_SECRET` costs one
+line and the ability to read it when the secret is the thing that is wrong.
 
 ## Verified state, 2026-10-01
 
