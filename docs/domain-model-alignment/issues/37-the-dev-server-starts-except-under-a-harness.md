@@ -70,6 +70,11 @@ conclusion.** The cause is not diagnosed. The cheap remedy is a line in `AGENTS.
 invocation that works; the thorough one is finding why `tsx watch` stalls at module load under that
 launcher.
 
+**The stall has since been narrowed, though not diagnosed** — see the 2026-10-03 entry under
+`## Comments`, which measures a stalled launcher side by side with a working one. It locates the
+failure upstream of anything in this repo: the `tsx` CLI starts normally and then never spawns the
+server process at all.
+
 `server/_core/**` is not implicated and must not be edited for this — it is vendored scaffold a
 regeneration clobbers.
 
@@ -112,5 +117,57 @@ reached the neighbouring conclusion about instruments one day earlier; the two b
 - **Ticket 22**, the Manus runtime injection. `vite.config.ts`'s `manus-debug-collector` is live in
   dev and writes to `.manus-logs/`. Not implicated — the server starts with it loaded — but it is
   what the browser console shows on every page load.
+
+## Comments
+
+### 2026-10-03 — the stalled launcher, measured beside a working one
+
+The harness process from this ticket's own investigation was **still alive 55 minutes after it was
+launched**, and was found by accident while stopping the working dev server. Both chains were on the
+machine at once, so they could be compared directly rather than from memory of two separate runs.
+
+| Started | Chain | Outcome |
+|---|---|---|
+| 14:15:14 | `npm run dev` → `cross-env` → **`tsx` CLI** | **no child process, no listener**, still stalled at 15:10 |
+| 14:19:14 | `npm run dev` → `cross-env` → `tsx` CLI → `node server/_core/index.ts` | listening on `:3000`, answered `200` |
+
+Measured on the two `tsx` CLI processes, the stalled one first:
+
+```
+CPU(s)=0.8    Threads=13  WS=40.6MB  Handles=267   no children
+CPU(s)=0.86   Threads=13  WS=45.9MB  Handles=277   one child, serving
+```
+
+**What this establishes.** Three things, none of them previously known:
+
+1. **The failure is upstream of this repo's code.** The stalled launcher never spawned a child at
+   all, so nothing in `server/` — including `createSpellCodeApp`, whose missing `[OAuth] Initialized`
+   line was the original symptom — ever began to run. This ticket's body already said the stall
+   precedes that line; what is new is that it precedes the *process*.
+2. **It is blocked, not spinning.** 0.8 CPU-seconds across 55 minutes. That rules out the slow-start
+   explanations this ticket records as mismeasurement candidates — a long compile, or
+   `Re-optimizing dependencies` — because either would burn CPU. It points instead at a wait on a
+   handle: stdio, a pipe, or a file watcher.
+3. **It is not port contention.** The working chain bound `:3000` four minutes later while the
+   stalled one was still sitting there, and the stalled one held no listener on any port. "Address
+   already in use" is not the mechanism.
+
+The near-identical thread count, working set and handle count are the reason this is a narrowing
+rather than a diagnosis: the stalled launcher got as far as the working one does before diverging, so
+the difference is in what it is waiting on, not in how far it got.
+
+The launcher that blocks is `tsx watch` itself — `package.json`'s `dev` script is
+`cross-env NODE_ENV=development tsx watch server/_core/index.ts`, and the process observed is its own
+`tsx/dist/cli.mjs`. So the thing that never forked is the **watch supervisor**, whose job is to spawn
+the child and watch the tree. That makes a file watcher the first thing to suspect rather than one
+candidate among three: on this machine the project sits under `C:\Users\…\Desktop`, and a watcher
+that cannot establish its handles under the harness would block exactly here, before the first fork.
+
+**What is not established.** The cause. Also: this is one observation of one stalled process, and
+**both processes were terminated when the dev server was stopped, so this specimen no longer
+exists.** Reproducing it means running a preview tool against this project again, which is cheap.
+`Done when` box 3 stays unticked —
+narrowing a cause is not diagnosing it, and this ticket's own standard is that an explicit decision
+not to diagnose is also a legitimate close.
 
 No secrets appear in this file.
