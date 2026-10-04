@@ -113,9 +113,9 @@ describe("Full Access enforcement for a Learner who holds it", () => {
   it("allows advanced lesson completion and records it", async () => {
     const result = await learningRouter.createCaller(ctx).completeLesson({ lessonId: "css-flex-layout", track: "CSS", difficulty: "Intermediate", xp: 40 });
 
-    expect(result).toMatchObject({ completed: true, isNewCompletion: true, awardedXp: 40 });
+    expect(result).toMatchObject({ completed: true, isNewCompletion: true, awardedXp: 75 });
     expect(stub.writesTo("lesson_progress")).toHaveLength(1);
-    expect(stub.writesTo("lesson_progress")[0]!.body).toMatchObject({ user_id: LEARNER_ID, state: "completed", xp_earned: 40 });
+    expect(stub.writesTo("lesson_progress")[0]!.body).toMatchObject({ user_id: LEARNER_ID, state: "completed", xp_earned: 75 });
   });
 
   it("allows project publishing", async () => {

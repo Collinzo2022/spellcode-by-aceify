@@ -31,8 +31,10 @@ export const learningRouter = router({
     .input(z.object({ trackId: z.string().refine(value => ["html", "css", "javascript"].includes(value), "Unknown track") }))
     .mutation(async ({ ctx, input }) => enrollSupabaseTrack(learnerIdOf(ctx.user), input.trackId)),
   completeLesson: protectedProcedure.input(lessonInput).mutation(async ({ ctx, input }) => {
+    const lesson = CURRICULUM.flatMap(track => track.lessons).find(item => item.id === input.lessonId);
+    if (!lesson) throw new Error("Lesson is not available yet");
     await requireLessonAccess(learnerIdOf(ctx.user), input.lessonId);
-    return completeSupabaseLesson(learnerIdOf(ctx.user), offsetMinutesOf(ctx.req), input);
+    return completeSupabaseLesson(learnerIdOf(ctx.user), offsetMinutesOf(ctx.req), { ...input, xp: lesson.xp });
   }),
   submitChallenge: protectedProcedure
     .input(

@@ -56,6 +56,12 @@ describe("an XP award", () => {
     expect(xpEntries()).toEqual([{ user_id: LEARNER_ID, amount: 50, source_kind: "lesson", source_id: lessonRowFor("html-foundations").id }]);
   });
 
+  it("uses the catalog XP rather than the amount supplied by the browser", async () => {
+    await learningRouter.createCaller(ctx).completeLesson({ lessonId: "html-foundations", track: "HTML", difficulty: "Beginner", xp: 250 });
+
+    expect(xpEntries()).toEqual([{ user_id: LEARNER_ID, amount: 50, source_kind: "lesson", source_id: lessonRowFor("html-foundations").id }]);
+  });
+
   it("is rejected by the database rather than guarded in application code", async () => {
     await completeLesson();
 
