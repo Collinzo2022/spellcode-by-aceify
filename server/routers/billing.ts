@@ -11,10 +11,10 @@ type PlanRow = { id: string; code: string; name: string; currency: string; amoun
 const PLAN_SELECT = "/rest/v1/plans?select=id,code,name,currency,amount_minor,interval,max_installments,paystack_plan_code,is_active&order=amount_minor.desc";
 
 export const billingRouter = router({
-  accessOptions: publicProcedure.query(async () => {
-    const plans = await supabaseAdminRequest<PlanRow[]>(PLAN_SELECT);
-    return plans;
-  }),
+  // Only plans a Learner can buy: initializeCheckout refuses an inactive one, so
+  // listing it offers a button that can only fail. adminPlans still lists every
+  // plan, which is where an inactive one is switched back on.
+  accessOptions: publicProcedure.query(async () => supabaseAdminRequest<PlanRow[]>(`${PLAN_SELECT}&is_active=eq.true`)),
   myAccess: protectedProcedure.query(async ({ ctx }) => verifyFullAccess(learnerIdOf(ctx.user))),
   startCheckout: protectedProcedure.input(z.object({ planCode: z.string().min(1).max(80) })).mutation(async ({ ctx, input }) => {
     const host = ctx.req.get("host");
